@@ -1,0 +1,32 @@
+name: 🤖 텔레그램 봇 (상시 실행)
+
+on:
+  workflow_dispatch:  # 수동 시작
+  schedule:
+    # 봇이 죽었을 때를 대비해 6시간마다 재시작
+    - cron: "0 */6 * * *"
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # GitHub Actions 최대 ~6시간
+
+    steps:
+      - name: 📂 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python 세팅
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 🤖 봇 실행
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY }}
+        run: python scripts/telegram_bot.py

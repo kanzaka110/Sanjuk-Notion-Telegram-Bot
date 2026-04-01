@@ -1,0 +1,82 @@
+name: 📊 투자 브리핑 자동화
+
+on:
+  # ── 스케줄 (UTC 기준, KST = UTC+9) ──────────────────────────
+  # 국내장/미국장 시작 전 브리핑만 생성 (마감 후 브리핑 제거)
+  schedule:
+    # 🇰🇷 국내장 시작 전  | KST 08:30 = UTC 23:30 (전날)
+    - cron: "30 23 * * 0-4"   # 일~목 (월~금 KST 오전 대응)
+
+    # 🇺🇸 미국장 시작 전  | KST 22:30 = UTC 13:30 (EST 기준, 개장 09:30 ET 1시간 전)
+    - cron: "30 13 * * 1-5"   # 월~금
+    # ※ 서머타임(3월~11월): KST 21:30 = UTC 12:30
+
+  # ── 수동 실행 (GitHub Actions 탭에서 버튼 클릭) ──────────────
+  workflow_dispatch:
+    inputs:
+      briefing_type:
+        description: "브리핑 종류"
+        required: true
+        default: "MANUAL"
+        type: choice
+        options:
+          - KR_BEFORE
+          - US_BEFORE
+          - MANUAL
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ── 1. 코드 체크아웃 ──────────────────────────────────────
+      - name: 📂 Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Python 환경 세팅 ───────────────────────────────────
+      - name: 🐍 Python 세팅
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. 의존성 설치 ────────────────────────────────────────
+      - name: 📦 패키지 설치
+        run: pip install -r requirements.txt
+
+      # ── 4. 브리핑 타입 결정 ───────────────────────────────────
+      # cron 트리거: UTC 시간으로 타입 자동 판별
+      # workflow_dispatch: 입력값 사용
+      - name: 🕐 브리핑 타입 결정
+        id: type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "BRIEFING_TYPE=${{ github.event.inputs.briefing_type }}" >> $GITHUB_ENV
+          else
+            # GitHub Actions cron은 최대 15~20분 지연 가능 → 넉넉한 범위로 판별
+            HOUR=$(date -u +%H)
+            echo "현재 UTC 시간: $HOUR시"
+            if [ "$HOUR" = "23" ] || [ "$HOUR" = "00" ]; then
+              # cron 23:30 UTC → KST 08:30 (국내장 시작 전)
+              echo "BRIEFING_TYPE=KR_BEFORE"  >> $GITHUB_ENV
+            elif [ "$HOUR" = "12" ] || [ "$HOUR" = "13" ] || [ "$HOUR" = "14" ]; then
+              # cron 13:30 UTC → KST 22:30 (미국장 시작 전)
+              # 서머타임: 12:30 UTC → KST 21:30
+              echo "BRIEFING_TYPE=US_BEFORE"  >> $GITHUB_ENV
+            else
+              echo "BRIEFING_TYPE=MANUAL"     >> $GITHUB_ENV
+            fi
+          fi
+
+      # ── 5. 브리핑 실행 ────────────────────────────────────────
+      - name: 🚀 브리핑 실행
+        env:
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY }}
+          NOTION_API_KEY:     ${{ secrets.NOTION_API_KEY }}
+          NOTION_DB_ID:       ${{ secrets.NOTION_DB_ID }}
+          BRIEFING_TYPE:      ${{ env.BRIEFING_TYPE }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/briefing.py

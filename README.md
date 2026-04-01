@@ -19,6 +19,13 @@ Sanjuk-Notion-Telegram-Bot/
 ├── Luck_bot/                        # 나의 운세 (@Sanjuk_Luck_bot)
 │   ├── luck_bot.py                  # 사주 분석 봇 (Claude Sonnet)
 │   └── saju_calendar.py             # 사주 달력 계산
+├── Stock_bot/                       # 산적주식비서 (notion-stock-update)
+│   ├── update_price.py              # Notion DB 주가 자동 업데이트
+│   ├── scripts/briefing.py          # AI 투자 브리핑 + 텔레그램 전송
+│   ├── scripts/telegram_bot.py      # 대화형 주식 챗봇
+│   ├── scripts/chat_db.py           # 챗봇 DB
+│   ├── scripts/fix_briefing_labels.py # 브리핑 라벨 수정 유틸
+│   └── .github/workflows/          # GitHub Actions (브리핑 스케줄)
 ├── investment_briefing_system.md    # 주식 브리핑 Notion 자동화 시스템 설명
 ├── investment_briefing_bot.md       # 산적주식비서 봇 설명
 ├── telegram_setup_guide.md          # 텔레그램 봇 셋업 가이드
@@ -42,7 +49,6 @@ Sanjuk-Notion-Telegram-Bot/
 
 ## 관련 리포지토리
 
-- [notion-stock-update](https://github.com/kanzaka110/notion-stock-update) — 주식 브리핑 코드
 - [desktop-tutorial](https://github.com/kanzaka110/desktop-tutorial) — UE 브리핑 + 게임뉴스 코드
 - [luck-bot](https://github.com/kanzaka110/luck-bot) — 운세 봇 코드
 
