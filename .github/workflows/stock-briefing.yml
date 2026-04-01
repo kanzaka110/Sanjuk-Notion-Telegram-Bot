@@ -40,10 +40,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: "Stock_bot/requirements.txt"
 
       # ── 3. 의존성 설치 ────────────────────────────────────────
       - name: 📦 패키지 설치
-        run: pip install -r requirements.txt
+        run: pip install -r Stock_bot/requirements.txt
 
       # ── 4. 브리핑 타입 결정 ───────────────────────────────────
       # cron 트리거: UTC 시간으로 타입 자동 판별
@@ -79,4 +80,4 @@ jobs:
           BRIEFING_TYPE:      ${{ env.BRIEFING_TYPE }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/briefing.py
+        run: python Stock_bot/scripts/briefing.py
