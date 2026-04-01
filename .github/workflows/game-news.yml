@@ -1,0 +1,36 @@
+name: 🎮 게임뉴스 데일리 브리핑
+
+on:
+  schedule:
+    # 매일 오전 9시 KST = UTC 00:00
+    - cron: '0 0 * * *'
+
+  workflow_dispatch:  # 수동 실행
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📂 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python 세팅
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "GameNews_bot/requirements.txt"
+
+      - name: 📦 패키지 설치
+        run: pip install -r GameNews_bot/requirements.txt
+
+      - name: 🎮 게임뉴스 브리핑 실행
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          CLAUDE_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.GAME_NEWS_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python GameNews_bot/game_news.py

@@ -26,6 +26,19 @@ Sanjuk-Notion-Telegram-Bot/
 │   ├── scripts/chat_db.py           # 챗봇 DB
 │   ├── scripts/fix_briefing_labels.py # 브리핑 라벨 수정 유틸
 │   └── .github/workflows/          # GitHub Actions (브리핑 스케줄)
+├── UE_bot/                          # UE5 가이드 비서 (@Sanjuk_UE5_Guide_bot)
+│   ├── briefing.py                  # UE 애니메이션 브리핑 (Notion + 텔레그램)
+│   ├── telegram_bot.py              # 대화형 UE 챗봇
+│   ├── chat_db.py                   # 챗봇 대화 DB
+│   ├── setup_cron.sh                # cron 설정
+│   └── requirements.txt             # 의존성
+├── GameNews_bot/                    # 게임뉴스 (@Sanjuk_GameNews_bot)
+│   ├── game_news.py                 # 게임뉴스 데일리 수집
+│   ├── game_news_bot.py             # 대화형 게임뉴스 챗봇
+│   └── requirements.txt             # 의존성
+├── .github/workflows/               # GitHub Actions 워크플로우
+│   ├── ue-animation-briefing.yml    # UE 브리핑 (매일 09:00 KST)
+│   └── game-news.yml                # 게임뉴스 (매일 09:00 KST)
 ├── investment_briefing_system.md    # 주식 브리핑 Notion 자동화 시스템 설명
 ├── investment_briefing_bot.md       # 산적주식비서 봇 설명
 ├── telegram_setup_guide.md          # 텔레그램 봇 셋업 가이드
@@ -46,10 +59,6 @@ Sanjuk-Notion-Telegram-Bot/
 | 게임뉴스 | 게임 뉴스 요약 | Gemini Pro + Sonnet | GitHub Actions + GCP |
 | 나의 운세 | 사주 역학 브리핑 + 상담 | Sonnet + Gemini Flash | GCP |
 | 산적 수다방 | AI 수다 컴패니언 | Gemini Flash/Pro | GCP |
-
-## 관련 리포지토리
-
-- [desktop-tutorial](https://github.com/kanzaka110/desktop-tutorial) — UE 브리핑 + 게임뉴스 코드
 
 ## 인프라
 
