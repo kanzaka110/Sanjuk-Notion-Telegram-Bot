@@ -2,12 +2,13 @@
 
 ## 프로젝트 개요
 
-텔레그램 봇 5개의 구축 가이드, 소스 코드, GCP 운영 스크립트 모음.
+Notion 자동화 시스템 + 텔레그램 봇 5개의 구축 가이드, 소스 코드, GCP 운영 스크립트 모음.
 
 ## 구조
 
 - **Chat_bot/** — 산적 수다방 봇 코드 (Gemini 하이브리드, SQLite, 테스트 포함)
 - **Luck_bot/** — 나의 운세 봇 코드 (사주 역학 v3, Claude Sonnet)
+- **investment_briefing_system.md** — 주식 브리핑 Notion 자동화 시스템 (Notion DB 연동)
 - **봇 설명 문서** — 각 봇별 설정/구조 설명 (telegram_setup_guide.md 등)
 - **운영 스크립트** — GCP 이전, cron 설정, 자동 업데이트
 
