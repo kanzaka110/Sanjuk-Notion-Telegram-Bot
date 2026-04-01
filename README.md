@@ -50,7 +50,6 @@ Sanjuk-Notion-Telegram-Bot/
 ## 관련 리포지토리
 
 - [desktop-tutorial](https://github.com/kanzaka110/desktop-tutorial) — UE 브리핑 + 게임뉴스 코드
-- [luck-bot](https://github.com/kanzaka110/luck-bot) — 운세 봇 코드
 
 ## 인프라
 
