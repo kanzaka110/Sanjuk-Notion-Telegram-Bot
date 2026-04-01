@@ -47,7 +47,7 @@ Animation Blueprint, Control Rig, Motion Matching, UAF/AnimNext, MetaHuman, Sequ
 ### 수동 실행
 ```bash
 export PATH="/c/Program Files/GitHub CLI:$PATH"
-gh workflow run ue-animation-briefing.yml --repo kanzaka110/desktop-tutorial -f count=1
+gh workflow run ue-animation-briefing.yml --repo kanzaka110/Sanjuk-Notion-Telegram-Bot -f count=1
 ```
 
 ### 주요 옵션
@@ -70,7 +70,7 @@ gh workflow run ue-animation-briefing.yml --repo kanzaka110/desktop-tutorial -f 
 ```bash
 set TELEGRAM_BOT_TOKEN=8190582482:AAFfbp9UaZM4tvwx3hcObejAayBGx6oR9Ys
 set TELEGRAM_CHAT_ID=8799420252
-cd "C:\Users\ohmil\OneDrive\바탕 화면\desktop-tutorial"
+cd "C:\dev\Sanjuk-Notion-Telegram-Bot\UE_bot"
 python scripts/telegram_bot.py
 ```
 
@@ -93,7 +93,7 @@ Animation Blueprint, Control Rig, Motion Matching, MetaHuman, Sequencer, Live Li
 - 봇 이름: 언리얼 튜토리얼 가이드 비서
 - 사용자명: @Sanjuk_UE5_Guide_bot
 
-### GitHub Secrets (kanzaka110/desktop-tutorial)
+### GitHub Secrets (kanzaka110/Sanjuk-Notion-Telegram-Bot)
 | 이름 | 용도 |
 |------|------|
 | `ANTHROPIC_API_KEY` | 브리핑 AI 분석 |
@@ -105,13 +105,13 @@ Animation Blueprint, Control Rig, Motion Matching, MetaHuman, Sequencer, Live Li
 ### 관련 파일
 | 파일 | 용도 |
 |------|------|
-| `briefing/briefing.py` | 브리핑 생성 + 텔레그램 전송 |
-| `scripts/telegram_bot.py` | 대화형 챗봇 (로컬 실행) |
+| `UE_bot/briefing.py` | 브리핑 생성 + 텔레그램 전송 |
+| `UE_bot/telegram_bot.py` | 대화형 챗봇 (로컬 실행) |
 | `.github/workflows/ue-animation-briefing.yml` | 자동 브리핑 cron |
 
 ### 프로젝트 경로
-- 로컬: `C:\Users\ohmil\OneDrive\바탕 화면\desktop-tutorial`
-- GitHub: `https://github.com/kanzaka110/desktop-tutorial`
+- 로컬: `C:\dev\Sanjuk-Notion-Telegram-Bot\UE_bot`
+- GitHub: `https://github.com/kanzaka110/Sanjuk-Notion-Telegram-Bot` (UE_bot/)
 
 ---
 

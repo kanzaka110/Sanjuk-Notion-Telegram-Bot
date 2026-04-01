@@ -33,7 +33,7 @@ export TELEGRAM_BOT_TOKEN="..."
 export TELEGRAM_CHAT_ID="8799420252"
 export GEMINI_API_KEY="..."
 export GITHUB_TOKEN="..."
-export GITHUB_REPO="kanzaka110/Sanjuk-Claude-Code"
+export GITHUB_REPO="kanzaka110/Sanjuk-Notion-Telegram-Bot"
 
 # 의존성 설치
 pip install -r requirements.txt
@@ -46,7 +46,7 @@ python chat_bot.py
 
 ```bash
 # SSH 접속 후 원클릭 세팅
-curl -sL https://raw.githubusercontent.com/kanzaka110/Sanjuk-Claude-Code/main/Project/Telegram_Bot/Chat_bot/setup_gcp.sh | bash
+curl -sL https://raw.githubusercontent.com/kanzaka110/Sanjuk-Notion-Telegram-Bot/master/Chat_bot/setup_gcp.sh | bash
 ```
 
 ## 환경변수
@@ -57,7 +57,7 @@ curl -sL https://raw.githubusercontent.com/kanzaka110/Sanjuk-Claude-Code/main/Pr
 | `TELEGRAM_CHAT_ID` | O | 허용할 Chat ID |
 | `GEMINI_API_KEY` | O | Google AI Studio API 키 |
 | `GITHUB_TOKEN` | X | GitHub PAT (메모리 push) |
-| `GITHUB_REPO` | X | GitHub 레포 (기본: kanzaka110/Sanjuk-Claude-Code) |
+| `GITHUB_REPO` | X | GitHub 레포 (기본: kanzaka110/Sanjuk-Notion-Telegram-Bot) |
 
 ## 파일 구조
 

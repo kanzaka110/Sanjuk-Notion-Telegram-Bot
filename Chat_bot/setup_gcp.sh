@@ -11,7 +11,7 @@
 #      - OS: Debian 12
 #   2. SSH 접속
 #   3. 이 스크립트 실행:
-#      curl -sL https://raw.githubusercontent.com/kanzaka110/Sanjuk-Claude-Code/main/Project/Telegram_Bot/Chat_bot/setup_gcp.sh | bash
+#      curl -sL https://raw.githubusercontent.com/kanzaka110/Sanjuk-Notion-Telegram-Bot/master/Chat_bot/setup_gcp.sh | bash
 #
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -29,16 +29,16 @@ echo "Python: $($PYTHON --version)"
 
 # ─── 2. 프로젝트 클론 ──────────────────────
 echo "[2/6] 프로젝트 클론..."
-WORK_DIR="$HOME/Sanjuk-Claude-Code"
+WORK_DIR="$HOME/Sanjuk-Notion-Telegram-Bot"
 if [ -d "$WORK_DIR" ]; then
     echo "이미 존재합니다. pull합니다..."
     cd "$WORK_DIR" && git pull
 else
     read -p "GitHub PAT 토큰 입력: " GH_TOKEN
-    git clone "https://${GH_TOKEN}@github.com/kanzaka110/Sanjuk-Claude-Code.git" "$WORK_DIR"
+    git clone "https://${GH_TOKEN}@github.com/kanzaka110/Sanjuk-Notion-Telegram-Bot.git" "$WORK_DIR"
 fi
 
-BOT_DIR="$WORK_DIR/Project/Telegram_Bot/Chat_bot"
+BOT_DIR="$WORK_DIR/Chat_bot"
 cd "$BOT_DIR"
 
 # ─── 3. 가상환경 + 의존성 ──────────────────
@@ -63,7 +63,7 @@ TELEGRAM_BOT_TOKEN=${TG_TOKEN}
 TELEGRAM_CHAT_ID=${TG_CHAT_ID}
 GEMINI_API_KEY=${GEMINI_KEY}
 GITHUB_TOKEN=${GH_PUSH_TOKEN}
-GITHUB_REPO=kanzaka110/Sanjuk-Claude-Code
+GITHUB_REPO=kanzaka110/Sanjuk-Notion-Telegram-Bot
 EOL
     echo ".env 생성 완료!"
 else

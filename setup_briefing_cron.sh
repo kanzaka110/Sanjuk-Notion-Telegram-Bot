@@ -9,106 +9,117 @@
 
 set -euo pipefail
 
-# ── 경로 설정 ──────────────────────────────────────────────────
-STOCK_DIR="$HOME/notion-stock-update"
-UE_DIR="$HOME/desktop-tutorial"
+# ── 경로 설정 (통합 리포 단일 경로) ───────────────────────
+REPO_DIR="$HOME/Sanjuk-Notion-Telegram-Bot"
+STOCK_DIR="$REPO_DIR/Stock_bot"
+UE_DIR="$REPO_DIR/UE_bot"
+GAMENEWS_DIR="$REPO_DIR/GameNews_bot"
 LOG_DIR="$HOME/logs/briefing"
 
-# ── 사전 검증 ──────────────────────────────────────────────────
+# ── 사전 검증 ──────────────────────────────────────────────
 echo "🔍 사전 검증 중..."
 
-for dir in "$STOCK_DIR" "$UE_DIR"; do
+if [ ! -d "$REPO_DIR" ]; then
+    echo "❌ 리포 디렉토리 없음: $REPO_DIR"
+    exit 1
+fi
+
+for dir in "$STOCK_DIR" "$UE_DIR" "$GAMENEWS_DIR"; do
     if [ ! -d "$dir" ]; then
         echo "❌ 디렉토리 없음: $dir"
         exit 1
     fi
 done
 
-for env_file in "$STOCK_DIR/.env" "$UE_DIR/.env"; do
-    if [ ! -f "$env_file" ]; then
-        echo "⚠️  .env 파일 없음: $env_file"
-        echo "   API 키가 설정되어 있는지 확인하세요."
-        exit 1
-    fi
-done
+if [ ! -f "$REPO_DIR/.env" ]; then
+    echo "⚠️  .env 파일 없음: $REPO_DIR/.env"
+    echo "   API 키가 설정되어 있는지 확인하세요."
+    exit 1
+fi
 
-# ── 로그 디렉토리 생성 ────────────────────────────────────────
+# ── 로그 디렉토리 생성 ────────────────────────────────────
 mkdir -p "$LOG_DIR"
 
-# ── venv 및 패키지 확인 ───────────────────────────────────────
+# ── venv 및 패키지 확인 ───────────────────────────────────
 echo "📦 패키지 확인 중..."
 
-# notion-stock-update
+# Stock_bot
 if [ ! -d "$STOCK_DIR/venv" ]; then
-    echo "  → notion-stock-update venv 생성..."
+    echo "  → Stock_bot venv 생성..."
     python3 -m venv "$STOCK_DIR/venv"
 fi
 "$STOCK_DIR/venv/bin/pip" install -q -r "$STOCK_DIR/requirements.txt"
 
-# desktop-tutorial (briefing)
+# UE_bot
 if [ ! -d "$UE_DIR/venv" ]; then
-    echo "  → desktop-tutorial venv 생성..."
+    echo "  → UE_bot venv 생성..."
     python3 -m venv "$UE_DIR/venv"
 fi
-"$UE_DIR/venv/bin/pip" install -q -r "$UE_DIR/briefing/requirements.txt"
-"$UE_DIR/venv/bin/pip" install -q anthropic google-genai ddgs duckduckgo-search requests
+"$UE_DIR/venv/bin/pip" install -q -r "$UE_DIR/requirements.txt"
 
-# ── 브리핑 래퍼 스크립트 생성 ─────────────────────────────────
+# GameNews_bot
+if [ ! -d "$GAMENEWS_DIR/venv" ]; then
+    echo "  → GameNews_bot venv 생성..."
+    python3 -m venv "$GAMENEWS_DIR/venv"
+fi
+"$GAMENEWS_DIR/venv/bin/pip" install -q -r "$GAMENEWS_DIR/requirements.txt"
+
+# ── 브리핑 래퍼 스크립트 생성 ─────────────────────────────
 # 각 브리핑마다 .env 로딩 + venv 활성화 + 스크립트 실행
 
+REPO_ENV="$REPO_DIR/.env"
+
 # 1) 투자 브리핑 (국내장 시작 전)
-cat > "$HOME/run_stock_briefing_kr.sh" << 'SCRIPT'
+cat > "$HOME/run_stock_briefing_kr.sh" << SCRIPT
 #!/bin/bash
-cd "$HOME/notion-stock-update"
-set -a; source .env; set +a
+cd "$STOCK_DIR"
+set -a; source "$REPO_ENV"; set +a
 export BRIEFING_TYPE="KR_BEFORE"
-./venv/bin/python scripts/briefing.py >> "$HOME/logs/briefing/stock_briefing.log" 2>&1
+./venv/bin/python scripts/briefing.py >> "$LOG_DIR/stock_briefing.log" 2>&1
 SCRIPT
 chmod +x "$HOME/run_stock_briefing_kr.sh"
 
 # 2) 투자 브리핑 (미국장 시작 전)
-cat > "$HOME/run_stock_briefing_us.sh" << 'SCRIPT'
+cat > "$HOME/run_stock_briefing_us.sh" << SCRIPT
 #!/bin/bash
-cd "$HOME/notion-stock-update"
-set -a; source .env; set +a
+cd "$STOCK_DIR"
+set -a; source "$REPO_ENV"; set +a
 export BRIEFING_TYPE="US_BEFORE"
-./venv/bin/python scripts/briefing.py >> "$HOME/logs/briefing/stock_briefing.log" 2>&1
+./venv/bin/python scripts/briefing.py >> "$LOG_DIR/stock_briefing.log" 2>&1
 SCRIPT
 chmod +x "$HOME/run_stock_briefing_us.sh"
 
 # 3) 주가 업데이트 (Notion)
-cat > "$HOME/run_stock_update.sh" << 'SCRIPT'
+cat > "$HOME/run_stock_update.sh" << SCRIPT
 #!/bin/bash
-cd "$HOME/notion-stock-update"
-set -a; source .env; set +a
-./venv/bin/python update_price.py >> "$HOME/logs/briefing/stock_update.log" 2>&1
+cd "$STOCK_DIR"
+set -a; source "$REPO_ENV"; set +a
+./venv/bin/python update_price.py >> "$LOG_DIR/stock_update.log" 2>&1
 SCRIPT
 chmod +x "$HOME/run_stock_update.sh"
 
 # 4) UE 애니메이션 브리핑
-cat > "$HOME/run_ue_briefing.sh" << 'SCRIPT'
+cat > "$HOME/run_ue_briefing.sh" << SCRIPT
 #!/bin/bash
-cd "$HOME/desktop-tutorial"
-set -a; source .env; set +a
-./venv/bin/python briefing/briefing.py >> "$HOME/logs/briefing/ue_briefing.log" 2>&1
+cd "$UE_DIR"
+set -a; source "$REPO_ENV"; set +a
+./venv/bin/python briefing.py >> "$LOG_DIR/ue_briefing.log" 2>&1
 SCRIPT
 chmod +x "$HOME/run_ue_briefing.sh"
 
 # 5) 게임뉴스 브리핑
-# ※ game_news.py는 TELEGRAM_BOT_TOKEN을 읽지만, 게임뉴스 전용 봇 토큰을 써야 함
-#    .env의 GAME_NEWS_BOT_TOKEN을 TELEGRAM_BOT_TOKEN으로 덮어쓰기
-cat > "$HOME/run_game_news.sh" << 'SCRIPT'
+cat > "$HOME/run_game_news.sh" << SCRIPT
 #!/bin/bash
-cd "$HOME/desktop-tutorial"
-set -a; source .env; set +a
-export TELEGRAM_BOT_TOKEN="$GAME_NEWS_BOT_TOKEN"
-./venv/bin/python scripts/game_news.py >> "$HOME/logs/briefing/game_news.log" 2>&1
+cd "$GAMENEWS_DIR"
+set -a; source "$REPO_ENV"; set +a
+export TELEGRAM_BOT_TOKEN="\$GAME_NEWS_BOT_TOKEN"
+./venv/bin/python game_news.py >> "$LOG_DIR/game_news.log" 2>&1
 SCRIPT
 chmod +x "$HOME/run_game_news.sh"
 
 echo "✅ 래퍼 스크립트 5개 생성 완료"
 
-# ── crontab 등록 ──────────────────────────────────────────────
+# ── crontab 등록 ──────────────────────────────────────────
 # 타임존: Asia/Seoul (KST)
 # ※ GCP 인스턴스 타임존이 UTC인 경우 TZ=Asia/Seoul 사용
 
@@ -167,16 +178,10 @@ echo ""
 echo "📁 로그: $LOG_DIR/"
 echo "📋 확인: crontab -l"
 echo ""
-echo "⚠️  중요: .env 파일에 아래 키가 모두 있는지 확인하세요:"
+echo "⚠️  중요: $REPO_DIR/.env 파일에 아래 키가 모두 있는지 확인하세요:"
 echo ""
-echo "  notion-stock-update/.env:"
-echo "    GEMINI_API_KEY, CLAUDE_API_KEY, NOTION_API_KEY"
-echo "    NOTION_DB_ID, NOTION_TOKEN, NOTION_DATABASE_ID"
-echo "    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
-echo ""
-echo "  desktop-tutorial/.env:"
-echo "    ANTHROPIC_API_KEY, GEMINI_API_KEY"
-echo "    NOTION_API_KEY, NOTION_DATABASE_ID"
-echo "    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
-echo "    GAME_NEWS_BOT_TOKEN"
+echo "  GEMINI_API_KEY, CLAUDE_API_KEY, ANTHROPIC_API_KEY"
+echo "  NOTION_API_KEY, NOTION_DB_ID, NOTION_DATABASE_ID"
+echo "  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
+echo "  GAME_NEWS_BOT_TOKEN"
 echo ""

@@ -19,7 +19,7 @@ Sanjuk-Notion-Telegram-Bot/
 ├── Luck_bot/                        # 나의 운세 (@Sanjuk_Luck_bot)
 │   ├── luck_bot.py                  # 사주 분석 봇 (Claude Sonnet)
 │   └── saju_calendar.py             # 사주 달력 계산
-├── Stock_bot/                       # 산적주식비서 (notion-stock-update)
+├── Stock_bot/                       # 산적주식비서
 │   ├── update_price.py              # Notion DB 주가 자동 업데이트
 │   ├── scripts/briefing.py          # AI 투자 브리핑 + 텔레그램 전송
 │   ├── scripts/telegram_bot.py      # 대화형 주식 챗봇

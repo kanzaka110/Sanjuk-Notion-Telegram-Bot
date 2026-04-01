@@ -58,7 +58,7 @@ GitHub Actions cron → briefing.py 실행
 ### 수동 실행
 ```bash
 export PATH="/c/Program Files/GitHub CLI:$PATH"
-gh workflow run briefing.yml --repo kanzaka110/notion-stock-update -f briefing_type=MANUAL
+gh workflow run briefing.yml --repo kanzaka110/Sanjuk-Notion-Telegram-Bot -f briefing_type=MANUAL
 ```
 
 ---
@@ -78,7 +78,7 @@ gh workflow run briefing.yml --repo kanzaka110/notion-stock-update -f briefing_t
 ```bash
 set TELEGRAM_BOT_TOKEN=<봇토큰>
 set TELEGRAM_CHAT_ID=<챗ID>
-cd "C:\Users\ohmil\OneDrive\바탕 화면\notion-stock-update"
+cd "C:\dev\Sanjuk-Notion-Telegram-Bot\Stock_bot"
 python scripts/telegram_bot.py
 ```
 
@@ -118,8 +118,8 @@ python scripts/telegram_bot.py
 | `telegram-bot.yml` | 비활성 | 상시 봇 (로컬로 전환됨) |
 
 ### 프로젝트 경로
-- 로컬: `C:\Users\ohmil\OneDrive\바탕 화면\notion-stock-update`
-- GitHub: `https://github.com/kanzaka110/notion-stock-update`
+- 로컬: `C:\dev\Sanjuk-Notion-Telegram-Bot\Stock_bot`
+- GitHub: `https://github.com/kanzaka110/Sanjuk-Notion-Telegram-Bot` (Stock_bot/)
 
 ---
 

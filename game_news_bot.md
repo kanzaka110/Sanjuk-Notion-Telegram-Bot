@@ -69,7 +69,7 @@ GitHub Actions cron (매일 09:00 KST)
 
 ## 인프라
 
-### GitHub Secrets (kanzaka110/desktop-tutorial)
+### GitHub Secrets (kanzaka110/Sanjuk-Notion-Telegram-Bot)
 | 이름 | 용도 |
 |------|------|
 | `ANTHROPIC_API_KEY` | Claude Haiku 요약 |
@@ -79,13 +79,13 @@ GitHub Actions cron (매일 09:00 KST)
 ### 관련 파일
 | 파일 | 용도 |
 |------|------|
-| `scripts/game_news.py` | 뉴스 수집 + 요약 + 전송 |
+| `GameNews_bot/game_news.py` | 뉴스 수집 + 요약 + 전송 |
 | `.github/workflows/game-news.yml` | 매일 09:00 KST 자동 실행 |
 
 ### 수동 실행
 ```bash
 export PATH="/c/Program Files/GitHub CLI:$PATH"
-gh workflow run game-news.yml --repo kanzaka110/desktop-tutorial
+gh workflow run game-news.yml --repo kanzaka110/Sanjuk-Notion-Telegram-Bot
 ```
 
 ---

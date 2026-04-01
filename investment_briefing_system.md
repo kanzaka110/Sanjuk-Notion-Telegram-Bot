@@ -9,8 +9,8 @@ Notion 데이터베이스에 저장합니다.
 
 | 항목 | 경로 / URL |
 |------|-----------|
-| **로컬 코드** | `C:\Users\ohmil\OneDrive\바탕 화면\notion-stock-update\` |
-| **GitHub repo** | `kanzaka110/notion-stock-update` (private) |
+| **로컬 코드** | `C:\dev\Sanjuk-Notion-Telegram-Bot\Stock_bot\` |
+| **GitHub repo** | `kanzaka110/Sanjuk-Notion-Telegram-Bot` (Stock_bot/) |
 | **Notion 브리핑 DB** | [📊 AI 투자 브리핑](https://www.notion.so/329d934c75b380158283d74a60c51d51) |
 | **Notion 포트폴리오 DB** | `2a1d934c-75b3-8146-8087-fe82dce5dc49` (Sanjuk 나의 투자 현황) |
 
@@ -19,14 +19,15 @@ Notion 데이터베이스에 저장합니다.
 ## 📁 핵심 파일 구조
 
 ```
-notion-stock-update/
+Sanjuk-Notion-Telegram-Bot/
 ├── .github/workflows/
 │   └── briefing.yml                 ← GitHub Actions (4개 스케줄)
-├── scripts/
-│   ├── briefing.py                  ← 메인 브리핑 스크립트 (Claude API + yfinance + Notion)
-│   └── fix_briefing_labels.py       ← 기존 브리핑 구분 라벨 일괄 수정
-├── update_price.py                  ← 주가 업데이트
-└── requirements.txt                 ← yfinance, requests, ddgs, duckduckgo-search
+├── Stock_bot/
+│   ├── scripts/
+│   │   ├── briefing.py              ← 메인 브리핑 스크립트 (Claude API + yfinance + Notion)
+│   │   └── fix_briefing_labels.py   ← 기존 브리핑 구분 라벨 일괄 수정
+│   ├── update_price.py              ← 주가 업데이트
+│   └── requirements.txt             ← yfinance, requests, ddgs, duckduckgo-search
 ```
 
 ---
@@ -38,7 +39,7 @@ notion-stock-update/
 ```bash
 export PATH="/c/Program Files/GitHub CLI:$PATH"
 GH_TOKEN="<토큰>" gh workflow run briefing.yml \
-  --repo kanzaka110/notion-stock-update -f briefing_type=US_BEFORE
+  --repo kanzaka110/Sanjuk-Notion-Telegram-Bot -f briefing_type=US_BEFORE
 ```
 
 ### 브리핑 타입

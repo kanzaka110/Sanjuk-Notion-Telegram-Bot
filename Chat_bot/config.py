@@ -30,8 +30,8 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "conversations.db")
 
 # ─── GitHub (메모리 Push) ───────────────────────────────
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "kanzaka110/Sanjuk-Claude-Code")
-MEMORY_PATH = ".claude/projects/C--dev-Sanjuk-Claude-Code/memory"
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "kanzaka110/Sanjuk-Notion-Telegram-Bot")
+MEMORY_PATH = ".claude/projects/C--dev-Sanjuk-Notion-Telegram-Bot/memory"
 
 # ─── 시스템 프롬프트 ────────────────────────────────────
 SYSTEM_PROMPT = """너는 승호의 오랜 친구야. 진짜 사람 친구.

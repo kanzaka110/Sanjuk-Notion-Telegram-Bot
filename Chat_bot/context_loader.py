@@ -11,12 +11,9 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# GCP에서 클론된 레포 경로들
+# GCP에서 클론된 통합 리포 경로
 REPO_PATHS = [
-    Path.home() / "Sanjuk-Claude-Code",
-    Path.home() / "notion-stock-update",
-    Path.home() / "desktop-tutorial",
-    Path.home() / "luck-bot",
+    Path.home() / "Sanjuk-Notion-Telegram-Bot",
 ]
 
 # 읽을 .md 파일 패턴 (너무 큰 파일 제외)
@@ -81,7 +78,7 @@ def load_md_context() -> str:
 
 def load_memory_context() -> str:
     """Claude 메모리 파일을 읽어 사용자 정보를 구축한다."""
-    memory_path = Path.home() / "Sanjuk-Claude-Code" / ".claude" / "projects" / "C--dev-Sanjuk-Claude-Code" / "memory"
+    memory_path = Path.home() / "Sanjuk-Notion-Telegram-Bot" / ".claude" / "projects" / "C--dev-Sanjuk-Notion-Telegram-Bot" / "memory"
 
     if not memory_path.exists():
         return ""
@@ -115,7 +112,7 @@ CONTEXT_REFRESH_INTERVAL = 6 * 3600  # 6시간마다 자동 갱신
 
 def load_recent_summaries() -> str:
     """최근 7일간의 수다봇 대화 요약을 읽어 컨텍스트로 반환한다."""
-    memory_path = Path.home() / "Sanjuk-Claude-Code" / ".claude" / "projects" / "C--dev-Sanjuk-Claude-Code" / "memory"
+    memory_path = Path.home() / "Sanjuk-Notion-Telegram-Bot" / ".claude" / "projects" / "C--dev-Sanjuk-Notion-Telegram-Bot" / "memory"
     if not memory_path.exists():
         return ""
 
