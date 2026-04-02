@@ -242,10 +242,11 @@ def build_search_prompt(category: str) -> str:
 1. Epic Games 공식 문서/블로그 (dev.epicgames.com, unrealengine.com)
 2. Epic Developer Community 튜토리얼 및 포럼
 3. Unreal Engine 공식 YouTube 채널 영상
-4. 80.lv, GDC, Unreal Fest 발표 자료
-5. 유명 UE 유튜버 (Alex Forsythe, Ryan Laley, Matt Aspland 등) 영상
-6. 관련 GitHub 프로젝트/플러그인
-7. Udemy, Skillshare 등 교육 플랫폼 정보
+4. FocalRig (focalrig.com) — Procedural Look & Aim Control Rig 플러그인 (Recoil Pattern, Eye Tracking, Full-Body Aim 등)
+5. 80.lv, GDC, Unreal Fest 발표 자료
+6. 유명 UE 유튜버 (Alex Forsythe, Ryan Laley, Matt Aspland 등) 영상
+7. 관련 GitHub 프로젝트/플러그인 (Fab 마켓플레이스 포함)
+8. Udemy, Skillshare 등 교육 플랫폼 정보
 
 **가능하면 {week_ago} 이후 새로 게시된 내용**을 우선으로 찾아주세요.
 새 정보가 없다면 최신 버전(5.5~5.7)의 중요 기능을 깊이 있게 다루어 주세요.
@@ -382,6 +383,7 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
             f"Unreal Engine {category} tutorial 2025 2026",
             f"언리얼 엔진 {category}{ver_q} 튜토리얼",
             f"UE5 {category} guide dev.epicgames.com",
+            f"site:focalrig.com {category} Unreal Engine procedural aim rig",
         ]
         raw_research = _gemini_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
