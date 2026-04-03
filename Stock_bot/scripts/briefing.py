@@ -306,8 +306,8 @@ def build_prompt(mkt, news):
 
 
 def gather_news_with_gemini(mkt) -> str:
-    """Step 1: Gemini 3.1 Pro + Google Search로 최신 뉴스/분석 수집."""
-    print("🔍 [2.5/3] Gemini 3.1 Pro — Google Search로 정보 수집...")
+    """Step 1: Gemini 2.5 Pro + Google Search로 최신 뉴스/분석 수집."""
+    print("🔍 [2.5/3] Gemini 2.5 Pro — Google Search로 정보 수집...")
     now = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
 
     stock_names = ", ".join(f"{nm}({tk})" for tk,nm in PORTFOLIO.items())
@@ -326,18 +326,22 @@ def gather_news_with_gemini(mkt) -> str:
 
 각 항목별로 핵심 내용을 정리해서 텍스트로 반환해주세요. 출처도 포함해주세요."""
 
-    google_search_tool = types.Tool(google_search=types.GoogleSearch())
-    response = gemini_client.models.generate_content(
-        model="gemini-2.5-pro",
-        contents=gather_prompt,
-        config=types.GenerateContentConfig(
-            tools=[google_search_tool],
-            max_output_tokens=5000,
-        ),
-    )
-    gathered = response.text.strip()
-    print(f"  📄 수집 완료 ({len(gathered)}자)")
-    return gathered
+    try:
+        google_search_tool = types.Tool(google_search=types.GoogleSearch())
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=gather_prompt,
+            config=types.GenerateContentConfig(
+                tools=[google_search_tool],
+                max_output_tokens=5000,
+            ),
+        )
+        gathered = response.text.strip()
+        print(f"  📄 수집 완료 ({len(gathered)}자)")
+        return gathered
+    except Exception as e:
+        print(f"  ⚠️ Gemini 뉴스 수집 오류: {e}")
+        return "(뉴스 수집 실패)"
 
 
 def generate(mkt, news):
@@ -375,7 +379,12 @@ def generate(mkt, news):
             p=p.strip().lstrip("json").strip()
             try: return json.loads(p)
             except: continue
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"  ⚠️ JSON 파싱 실패: {e}")
+        print(f"  📄 원본 응답 (처음 500자): {raw[:500]}")
+        raise
 
 
 # ═══════════════════════════════════════════════════════
@@ -907,14 +916,20 @@ def main():
     print(f"  🚀  {LABEL}")
     print(f"  🕐  {now.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print(f"{'═'*56}\n")
-    mkt = fetch_market()
-    news = fetch_news()
-    briefing = generate(mkt, news)
-    page_id = save(briefing, mkt)
-    send_telegram(briefing, page_id)
-    print(f"\n{'═'*56}")
-    print("  ✅  브리핑 완료!")
-    print(f"{'═'*56}\n")
+    try:
+        mkt = fetch_market()
+        news = fetch_news()
+        briefing = generate(mkt, news)
+        page_id = save(briefing, mkt)
+        send_telegram(briefing, page_id)
+        print(f"\n{'═'*56}")
+        print("  ✅  브리핑 완료!")
+        print(f"{'═'*56}\n")
+    except Exception as e:
+        print(f"\n❌ 브리핑 실패: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 if __name__ == "__main__":
     main()
