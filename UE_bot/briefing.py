@@ -1155,25 +1155,26 @@ def run_briefing(categories: list[str], *, force: bool = False, per_version: boo
             skipped += 1
             continue
 
-        # Rate limit 방지: 첫 번째 이후 90초 대기
+        # Rate limit 방지: 첫 번째 이후 30초 대기
         if idx > 0:
-            wait = 90
+            wait = 30
             print(f"  ⏳ Rate limit 방지 — {wait}초 대기...")
             time.sleep(wait)
 
-        # 콘텐츠 수집 (최대 2회 재시도)
+        # 콘텐츠 수집 (최대 1회 재시도)
         data = None
-        for attempt in range(3):
+        for attempt in range(2):
             data = fetch_content(anthropic_client, category, target_version=version)
-            if data:
+            if data is not None:
                 break
-            if attempt < 2:
-                retry_wait = 120 * (attempt + 1)
-                print(f"  🔄 재시도 {attempt+2}/3 — {retry_wait}초 후...")
+            if attempt < 1:
+                retry_wait = 30
+                print(f"  🔄 재시도 {attempt+2}/2 — {retry_wait}초 후...")
                 time.sleep(retry_wait)
 
         if not data:
-            failed += 1
+            # 신규 정보 없음(스킵)과 실제 에러를 구분
+            skipped += 1
             continue
 
         # 버전별 모드면 제목에 버전 표기 + UE 버전 강제 설정
