@@ -77,7 +77,7 @@ jobs:
           CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY || secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           NOTION_API_KEY:     ${{ secrets.NOTION_API_KEY }}
-          NOTION_DB_ID:       ${{ secrets.NOTION_DB_ID || secrets.NOTION_DATABASE_ID }}
+          NOTION_DB_ID:       ${{ secrets.NOTION_DB_ID }}
           BRIEFING_TYPE:      ${{ env.BRIEFING_TYPE }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}

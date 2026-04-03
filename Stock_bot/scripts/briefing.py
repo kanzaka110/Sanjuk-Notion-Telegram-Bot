@@ -24,7 +24,7 @@ CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", os.environ.get("ANTHROPIC_API_
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
-NOTION_DB_ID   = os.environ.get("NOTION_DB_ID", os.environ.get("NOTION_DATABASE_ID", ""))
+NOTION_DB_ID   = os.environ.get("NOTION_DB_ID", "")
 BRIEFING_TYPE  = os.environ.get("BRIEFING_TYPE", "MANUAL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
