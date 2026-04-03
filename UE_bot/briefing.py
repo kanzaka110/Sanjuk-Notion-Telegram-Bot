@@ -367,16 +367,17 @@ def _gemini_search(queries: list[str]) -> str:
 
 {chr(10).join(f'- {q}' for q in queries)}
 
-각 검색 결과에 제목, URL, 핵심 내용을 포함해주세요. 한국어와 영어 결과 모두 포함."""
+각 검색 결과에 제목, URL, 핵심 내용을 포함해주세요. 한국어와 영어 결과 모두 포함.
+오늘 올라온 콘텐츠를 우선으로 찾아주세요."""
 
     try:
         google_search_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
         response = gc.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-2.5-pro",
             contents=search_prompt,
             config=genai_types.GenerateContentConfig(
                 tools=[google_search_tool],
-                max_output_tokens=3000,
+                max_output_tokens=2000,
             ),
         )
         return response.text.strip()
@@ -394,11 +395,8 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
         ver_q = f" UE {target_version}" if target_version else " UE5"
         today_str = date.today().strftime("%Y-%m-%d")
         queries = [
-            f"Unreal Engine {category} animation today {today_str}",
-            f"UE5 {category} tutorial new {today_str}",
-            f"언리얼 엔진 {category} 애니메이션{ver_q} 오늘",
-            f"site:youtube.com Unreal Engine {category} animation",
-            f"site:80.lv OR site:focalrig.com Unreal Engine animation {category}",
+            f"Unreal Engine {category} animation new today {today_str}",
+            f"언리얼 엔진 애니메이션 {category} {today_str}",
         ]
         raw_research = _gemini_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
