@@ -101,28 +101,35 @@ UE_VERSIONS       = ["5.5", "5.6", "5.7", "5.8+"]
 
 # ─── 중복 체크 ────────────────────────────────────────────────────────────────
 
+def _notion_db_query(database_id: str, payload: dict) -> dict:
+    """Notion API databases/query를 requests로 직접 호출 (SDK 호환성 문제 우회)."""
+    import requests as _req
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
+    res = _req.post(
+        f"https://api.notion.com/v1/databases/{database_id}/query",
+        headers=headers, json=payload, timeout=30,
+    )
+    res.raise_for_status()
+    return res.json()
+
+
 def already_briefed_today(notion: Client, category: str) -> bool:
     """오늘 날짜 + 해당 카테고리로 이미 Notion 엔트리가 있는지 확인합니다."""
     today = date.today().isoformat()
     try:
-        result = notion.databases.query(
-            database_id=NOTION_DATABASE_ID,
-            **{
-                "filter": {
-                    "and": [
-                        {
-                            "property": "날짜",
-                            "date": {"equals": today}
-                        },
-                        {
-                            "property": "카테고리",
-                            "select": {"equals": category}
-                        }
-                    ]
-                },
-                "page_size": 1,
-            }
-        )
+        result = _notion_db_query(NOTION_DATABASE_ID, {
+            "filter": {
+                "and": [
+                    {"property": "날짜", "date": {"equals": today}},
+                    {"property": "카테고리", "select": {"equals": category}},
+                ]
+            },
+            "page_size": 1,
+        })
         if result.get("results"):
             title = (
                 result["results"][0]
@@ -142,13 +149,10 @@ def already_briefed_today(notion: Client, category: str) -> bool:
 def get_existing_summaries(notion: Client, limit: int = 30) -> list[str]:
     """최근 Notion 페이지들의 요약 텍스트를 가져옵니다 (내용 중복 비교용)."""
     try:
-        result = notion.databases.query(
-            database_id=NOTION_DATABASE_ID,
-            **{
-                "sorts": [{"property": "날짜", "direction": "descending"}],
-                "page_size": limit,
-            }
-        )
+        result = _notion_db_query(NOTION_DATABASE_ID, {
+            "sorts": [{"property": "날짜", "direction": "descending"}],
+            "page_size": limit,
+        })
         summaries = []
         for page in result.get("results", []):
             props = page.get("properties", {})
@@ -191,24 +195,15 @@ def remove_new_badges(notion: Client) -> int:
     removed = 0
     try:
         # 오늘 이전 + 🆕 신규 체크된 페이지 검색
-        result = notion.databases.query(
-            database_id=NOTION_DATABASE_ID,
-            **{
-                "filter": {
-                    "and": [
-                        {
-                            "property": "날짜",
-                            "date": {"before": today}
-                        },
-                        {
-                            "property": "🆕 신규",
-                            "checkbox": {"equals": True}
-                        }
-                    ]
-                },
-                "page_size": 50,
-            }
-        )
+        result = _notion_db_query(NOTION_DATABASE_ID, {
+            "filter": {
+                "and": [
+                    {"property": "날짜", "date": {"before": today}},
+                    {"property": "🆕 신규", "checkbox": {"equals": True}},
+                ]
+            },
+            "page_size": 50,
+        })
         for page in result.get("results", []):
             page_id = page["id"]
             title_arr = page.get("properties", {}).get("제목", {}).get("title", [])
