@@ -247,7 +247,7 @@ def _ask_gemini_sync(chat_id: int, user_message: str) -> str:
 
     try:
         response = gemini_client.models.generate_content(
-            model="gemini-3-flash-preview",
+            model="gemini-2.5-flash",
             contents=user_prompt,
         )
         assistant_msg = response.text.strip()

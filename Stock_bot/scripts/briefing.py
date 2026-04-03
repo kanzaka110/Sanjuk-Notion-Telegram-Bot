@@ -328,7 +328,7 @@ def gather_news_with_gemini(mkt) -> str:
 
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
     response = gemini_client.models.generate_content(
-        model="gemini-3.1-pro-preview",
+        model="gemini-2.5-pro",
         contents=gather_prompt,
         config=types.GenerateContentConfig(
             tools=[google_search_tool],
