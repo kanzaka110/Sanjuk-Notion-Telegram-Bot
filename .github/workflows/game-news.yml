@@ -1,9 +1,9 @@
 name: 🎮 게임뉴스 데일리 브리핑
 
 on:
-  schedule:
-    # 매일 오전 9시 KST = UTC 00:00
-    - cron: '0 0 * * *'
+  # schedule 비활성화 — GCP에서 실행
+  # schedule:
+  #   - cron: '0 0 * * *'
 
   workflow_dispatch:  # 수동 실행
 

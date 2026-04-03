@@ -2,9 +2,9 @@ name: 🤖 산적주식비서 텔레그램 봇 (상시 실행)
 
 on:
   workflow_dispatch:  # 수동 시작
-  schedule:
-    # 봇이 죽었을 때를 대비해 6시간마다 재시작
-    - cron: "0 */6 * * *"
+  # schedule 비활성화 — GCP에서 상시 실행
+  # schedule:
+  #   - cron: "0 */6 * * *"
 
 jobs:
   bot:
