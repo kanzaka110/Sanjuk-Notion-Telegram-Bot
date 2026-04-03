@@ -113,17 +113,13 @@ def summarize_news(gathered_text: str) -> str:
 
 🏢 게임회사
 
-▸ 기사 제목 한 줄
-URL
-▸ 기사 제목 한 줄
-URL
+▸ <a href="URL">기사 제목</a>
+▸ <a href="URL">기사 제목</a>
 
 🎮 게임
 
-▸ 기사 제목 한 줄
-URL
-▸ 기사 제목 한 줄
-URL
+▸ <a href="URL">기사 제목</a>
+▸ <a href="URL">기사 제목</a>
 
 📌 한 줄 요약
 
@@ -158,6 +154,7 @@ def send_telegram(text: str) -> None:
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": msg,
+        "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
 
