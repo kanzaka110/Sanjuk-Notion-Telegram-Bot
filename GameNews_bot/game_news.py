@@ -114,11 +114,13 @@ def summarize_news(gathered_text: str) -> str:
 🏢 게임회사
 
 ▸ <a href="URL">기사 제목</a>
+
 ▸ <a href="URL">기사 제목</a>
 
 🎮 게임
 
 ▸ <a href="URL">기사 제목</a>
+
 ▸ <a href="URL">기사 제목</a>
 
 📌 한 줄 요약
@@ -127,6 +129,7 @@ def summarize_news(gathered_text: str) -> str:
 - 한국어, 각 카테고리 최대 5개 (5개 미만이면 있는 만큼 모두 출력)
 - 수집된 기사가 1개라도 있으면 반드시 출력할 것. 갯수가 부족하다고 생략하지 말 것
 - 제목만 한 줄로 (요약 불필요)
+- 각 기사 사이에 반드시 빈 줄 하나를 넣어서 간격을 줄 것
 - ⚠️ 오늘({today}) 게시된 기사만 포함. 어제 이전 기사는 반드시 제외
 - ⚠️ URL 규칙 (가장 중요):
   - "Google Search 검증된 URL 목록"이 있으면, 반드시 그 목록의 URL만 사용할 것
