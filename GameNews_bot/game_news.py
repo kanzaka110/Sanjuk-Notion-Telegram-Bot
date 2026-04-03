@@ -72,7 +72,32 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
             max_output_tokens=8000,
         ),
     )
-    return response.text.strip()
+
+    # Gemini 텍스트 응답
+    result_text = response.text.strip()
+
+    # grounding_metadata에서 실제 검색 결과 URL 추출
+    grounding_urls = []
+    try:
+        for candidate in response.candidates:
+            gm = getattr(candidate, "grounding_metadata", None)
+            if not gm:
+                continue
+            chunks = getattr(gm, "grounding_chunks", None) or []
+            for chunk in chunks:
+                web = getattr(chunk, "web", None)
+                if web and getattr(web, "uri", None):
+                    title = getattr(web, "title", "") or ""
+                    grounding_urls.append(f"[검증된 URL] 제목: {title} | URL: {web.uri}")
+    except Exception as e:
+        print(f"  ⚠️ grounding metadata 추출 실패: {e}")
+
+    if grounding_urls:
+        url_section = "\n".join(grounding_urls)
+        result_text += f"\n\n━━━ Google Search 검증된 URL 목록 ━━━\n{url_section}"
+        print(f"  📎 검증된 URL {len(grounding_urls)}개 추출")
+
+    return result_text
 
 
 # ─── Claude Sonnet으로 정리 ──────────────────────────
@@ -107,11 +132,14 @@ URL
 - 수집된 기사가 1개라도 있으면 반드시 출력할 것. 갯수가 부족하다고 생략하지 말 것
 - 제목만 한 줄로 (요약 불필요)
 - ⚠️ 오늘({today}) 게시된 기사만 포함. 어제 이전 기사는 반드시 제외
-- ⚠️ 기사 제목과 URL이 반드시 같은 기사여야 함. 수집 결과에서 제목-URL 쌍을 그대로 가져올 것
-- 수집 결과에 있는 원본 URL을 그대로 사용 (절대 URL을 수정하거나 다른 URL로 대체하지 말 것)
+- ⚠️ URL 규칙 (가장 중요):
+  - "Google Search 검증된 URL 목록"이 있으면, 반드시 그 목록의 URL만 사용할 것
+  - 검증된 URL 목록의 제목과 URL 쌍을 그대로 사용할 것
+  - 검증된 URL 목록에 없는 URL은 절대 사용하지 말 것
+  - URL을 임의로 만들거나 추측하지 말 것
+  - URL을 수정하거나 다른 URL로 대체하지 말 것
 - URL이 없는 뉴스는 제외
-- 중복 제거
-- URL을 임의로 만들지 말 것"""
+- 중복 제거"""
 
     response = claude_client.messages.create(
         model="claude-sonnet-4-6",
