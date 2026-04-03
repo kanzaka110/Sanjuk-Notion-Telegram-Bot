@@ -796,29 +796,58 @@ def save(briefing, mkt):
 
     def rt(s): return [{"type":"text","text":{"content":str(s)[:2000]}}]
 
+    headers={"Authorization":f"Bearer {NOTION_API_KEY}",
+             "Notion-Version":"2022-06-28","Content-Type":"application/json"}
+
+    # 먼저 데이터베이스 스키마를 조회하여 실제 속성명 확인
+    db_res = requests.get(f"https://api.notion.com/v1/databases/{NOTION_DB_ID}",
+                          headers=headers, timeout=30)
+    db_props = set()
+    if db_res.status_code == 200:
+        db_props = set(db_res.json().get("properties", {}).keys())
+        print(f"  📋 DB 속성: {', '.join(sorted(db_props))}")
+
+    # 전체 속성 매핑 (코드에서 사용하는 이름 → 값)
+    all_props = {
+        "브리핑 제목": {"title":     rt(briefing.get("title", f"{now_kst.strftime('%Y.%m.%d %H:%M')} 브리핑"))},
+        "날짜":        {"date":      {"start": dt_iso}},
+        "브리핑구분":  {"select":    {"name": LABEL}},
+        "시장상황":    {"select":    {"name": briefing.get("market_status","혼조")}},
+        "KOSPI":       {"rich_text": rt(briefing.get("kospi",""))},
+        "코스닥":      {"rich_text": rt(briefing.get("kosdaq",""))},
+        "브렌트유_유가":{"rich_text": rt(briefing.get("brent",""))},
+        "원달러환율":  {"rich_text": rt(briefing.get("usdkrw",""))},
+        "VIX":         {"rich_text": rt(briefing.get("vix",""))},
+        "투자결정":    {"select":    {"name": briefing.get("investment_decision","관망")}},
+        "핵심키워드":  {"rich_text": rt(briefing.get("keywords",""))},
+        "다음액션":    {"rich_text": rt(briefing.get("next_action",""))},
+        "AI조언":      {"select":    {"name": briefing.get("advisor_verdict","중립") if briefing.get("advisor_verdict","") in ["매수대기","소액분할","적극매수","매도고려","중립"] else "중립"}},
+    }
+
+    # DB에 실제 존재하는 속성만 사용 (스키마 조회 실패 시 전부 시도)
+    if db_props:
+        properties = {k: v for k, v in all_props.items() if k in db_props}
+        # title 속성은 이름이 다를 수 있음 — DB에서 title 타입 속성 찾기
+        title_prop = None
+        for pname, pinfo in db_res.json().get("properties", {}).items():
+            if pinfo.get("type") == "title":
+                title_prop = pname
+                break
+        if title_prop and title_prop not in properties:
+            properties[title_prop] = {"title": rt(briefing.get("title", f"{now_kst.strftime('%Y.%m.%d %H:%M')} 브리핑"))}
+        skipped = set(all_props.keys()) - set(properties.keys())
+        if skipped:
+            print(f"  ⏭️  DB에 없는 속성 스킵: {', '.join(skipped)}")
+    else:
+        properties = all_props
+
     payload = {
         "parent":  {"database_id": NOTION_DB_ID},
         "icon":    {"type":"emoji","emoji":"📊"},
-        "properties": {
-            "브리핑 제목": {"title":     rt(briefing.get("title", f"{now_kst.strftime('%Y.%m.%d %H:%M')} 브리핑"))},
-            "날짜":        {"date":      {"start": dt_iso}},   # ← 날짜+시간
-            "브리핑구분":  {"select":    {"name": LABEL}},
-            "시장상황":    {"select":    {"name": briefing.get("market_status","혼조")}},
-            "KOSPI":       {"rich_text": rt(briefing.get("kospi",""))},
-            "코스닥":      {"rich_text": rt(briefing.get("kosdaq",""))},
-            "브렌트유_유가":{"rich_text": rt(briefing.get("brent",""))},
-            "원달러환율":  {"rich_text": rt(briefing.get("usdkrw",""))},
-            "VIX":         {"rich_text": rt(briefing.get("vix",""))},
-            "투자결정":    {"select":    {"name": briefing.get("investment_decision","관망")}},
-            "핵심키워드":  {"rich_text": rt(briefing.get("keywords",""))},
-            "다음액션":    {"rich_text": rt(briefing.get("next_action",""))},
-            "AI조언":      {"select":    {"name": briefing.get("advisor_verdict","중립") if briefing.get("advisor_verdict","") in ["매수대기","소액분할","적극매수","매도고려","중립"] else "중립"}},
-        },
+        "properties": properties,
         "children": children,
     }
 
-    headers={"Authorization":f"Bearer {NOTION_API_KEY}",
-             "Notion-Version":"2022-06-28","Content-Type":"application/json"}
     res=requests.post("https://api.notion.com/v1/pages",
                       headers=headers, json=payload, timeout=60)
     if res.status_code!=200:
