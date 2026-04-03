@@ -92,7 +92,8 @@ CATEGORIES: list[str] = [
 VALID_TAGS: list[str] = [
     "Procedural Animation", "IK", "Retargeting", "Physics",
     "Facial Animation", "Locomotion", "State Machine", "Blend Space",
-    "Morph Target", "Root Motion",
+    "Morph Target", "Root Motion", "Ragdoll", "Cloth Simulation",
+    "Motion Capture", "Skeletal Mesh", "Vertex Animation",
 ]
 
 DIFFICULTY_LEVELS = ["초급", "중급", "고급"]
@@ -229,34 +230,47 @@ def remove_new_badges(notion: Client) -> int:
 
 def build_search_prompt(category: str) -> str:
     today     = date.today().strftime("%Y년 %m월 %d일")
-    week_ago  = (date.today() - timedelta(days=7)).strftime("%Y년 %m월 %d일")
 
     tag_list  = ", ".join(VALID_TAGS)
     cat_list  = ", ".join(CATEGORIES)
 
     return f"""
 당신은 언리얼 엔진 애니메이션 전문가이자 교육 콘텐츠 작성자입니다.
-오늘({today}) 기준으로 언리얼 엔진의 **{category}** 시스템에 관한 최신 정보를 웹에서 철저히 검색하세요.
+오늘({today}) 기준으로 언리얼 엔진의 **{category}** 시스템에 관한 **오늘 새로 올라온 정보**를 웹에서 철저히 검색하세요.
 
-## 검색 우선순위
-1. Epic Games 공식 문서/블로그 (dev.epicgames.com, unrealengine.com)
-2. Epic Developer Community 튜토리얼 및 포럼
-3. Unreal Engine 공식 YouTube 채널 영상
-4. 80.lv, GDC, Unreal Fest 발표 자료
-5. 유명 UE 유튜버 (Alex Forsythe, Ryan Laley, Matt Aspland 등) 영상
-6. 관련 GitHub 프로젝트/플러그인
-7. Udemy, Skillshare 등 교육 플랫폼 정보
+⚠️ 핵심 원칙:
+- **오늘({today}) 게시/업로드된 콘텐츠만** 수집하세요.
+- 어제 이전에 올라온 기존 문서, 튜토리얼, 영상은 포함하지 마세요.
+- 오늘자 신규 정보가 전혀 없다면, "새_정보_여부": false 로 설정하고 빈 내용으로 응답하세요.
 
-**가능하면 {week_ago} 이후 새로 게시된 내용**을 우선으로 찾아주세요.
-새 정보가 없다면 최신 버전(5.5~5.7)의 중요 기능을 깊이 있게 다루어 주세요.
+## 검색 대상 (다양한 매체를 반드시 모두 검색)
+1. YouTube — UE 공식 채널, Alex Forsythe, Ryan Laley, Matt Aspland, Druid Mechanics, Gabriel Aguiar, PrismaticaDev 등 UE 애니메이션 유튜버
+2. 80.lv, GameDev.net, Real-Time VFX, Polycount 등 게임개발 커뮤니티/매체
+3. Epic Games 공식 블로그/문서 (dev.epicgames.com, unrealengine.com) — 새 포스트나 업데이트만
+4. Epic Developer Community 포럼 — 오늘 올라온 글만
+5. FocalRig (focalrig.com) — Procedural Look & Aim Control Rig 플러그인
+6. Twitter/X, Reddit r/unrealengine — 오늘자 핫 포스트
+7. Fab 마켓플레이스 — 신규 애니메이션 관련 플러그인/에셋
+8. GDC, Unreal Fest 발표 자료 (새로 공개된 것만)
+9. GitHub — 신규/업데이트된 애니메이션 관련 오픈소스
+
+## 애니메이션 관련 전체 범위 (카테고리 무관하게 폭넓게)
+{category}뿐 아니라, 아래 키워드와 관련된 오늘자 콘텐츠도 함께 검색하세요:
+- Animation Blueprint, Control Rig, Motion Matching, AnimNext/UAF
+- MetaHuman, Facial Animation, Live Link, Motion Capture
+- ML Deformer, Physics Simulation, Ragdoll, Chaos Cloth
+- GASP, Mover Plugin, Procedural Animation, IK/FK
+- Retargeting, Root Motion, Blend Space, State Machine
+- Sequencer 애니메이션, Morph Target, Skeletal Mesh
+- Niagara 캐릭터 이펙트, Vertex Animation
 
 ## 핵심 요구사항
 - **초보자도 따라할 수 있을 정도로 매우 상세하게** 작성
 - 모든 UI 경로는 정확히 (예: "Content Browser → 우클릭 → Animation → Animation Blueprint")
 - 모든 설정값과 파라미터를 구체적으로 명시
 - "왜" 이렇게 하는지 이유를 항상 포함
-- YouTube 튜토리얼 영상 링크를 최소 3개 이상 포함
-- 관련 공식 문서 링크를 최소 2개 이상 포함
+- 찾은 YouTube 영상 링크를 포함 (오늘 올라온 것만)
+- 찾은 문서/포스트 링크를 포함 (오늘 올라온 것만)
 
 ---
 
@@ -266,7 +280,7 @@ def build_search_prompt(category: str) -> str:
 {{
   "제목": "구체적이고 실용적인 제목 (예: 'UE 5.7 Foot Placement Control Rig — 초보자를 위한 완전 가이드')",
   "요약": "8~12문장 상세 요약. ① 이 기능이 무엇인지 ② 왜 중요한지 ③ 이전 버전 대비 무엇이 바뀌었는지 ④ 어떤 게임/프로젝트에서 활용되는지 ⑤ 학습 난이도와 소요 시간 예상 포함.",
-  "소스_링크": "https://가장_공신력_있는_링크",
+  "소스_링크": "https://오늘_올라온_원본_링크",
   "난이도": "초급 또는 중급 또는 고급",
   "UE_버전": "5.5 또는 5.6 또는 5.7 또는 5.8+",
   "태그": ["태그1", "태그2"],
@@ -378,10 +392,13 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
     try:
         # ── STEP 1: Gemini 3.1 Pro + Google Search ──
         ver_q = f" UE {target_version}" if target_version else " UE5"
+        today_str = date.today().strftime("%Y-%m-%d")
         queries = [
-            f"Unreal Engine {category} tutorial 2025 2026",
-            f"언리얼 엔진 {category}{ver_q} 튜토리얼",
-            f"UE5 {category} guide dev.epicgames.com",
+            f"Unreal Engine {category} animation today {today_str}",
+            f"UE5 {category} tutorial new {today_str}",
+            f"언리얼 엔진 {category} 애니메이션{ver_q} 오늘",
+            f"site:youtube.com Unreal Engine {category} animation",
+            f"site:80.lv OR site:focalrig.com Unreal Engine animation {category}",
         ]
         raw_research = _gemini_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
@@ -397,6 +414,12 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
             if hasattr(block, "text") and block.text
         )
         meta = _extract_json(meta_text) or {}
+
+        # 신규 정보가 없으면 스킵
+        if not meta.get("새_정보_여부", True):
+            print(f"  ℹ️ {category}: 오늘자 신규 정보 없음 — 스킵")
+            return None
+
         print(f"  📋 메타데이터: {meta.get('제목', category)[:50]}...")
 
         # ── STEP 3: 수집 결과로 Notion 본문 마크다운 생성 ──
@@ -432,32 +455,37 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
 
 def _build_search_only_prompt(category: str, target_version: str | None = None) -> str:
     today = date.today().strftime("%Y년 %m월 %d일")
-    week_ago = (date.today() - timedelta(days=7)).strftime("%Y년 %m월 %d일")
-    ver_focus = f"\n\n**특히 UE {target_version} 버전에 해당하는 내용만 집중**해서 검색하세요. 이 버전에서 추가/변경된 기능, 이 버전 전용 튜토리얼, 이 버전의 알려진 제한사항을 중점적으로 찾아주세요." if target_version else ""
-    return f"""오늘({today}) 기준 언리얼 엔진 **{category}** 관련 최신 정보를 웹에서 철저히 검색하세요.{ver_focus}
+    ver_focus = f"\n\n**특히 UE {target_version} 버전에 해당하는 내용만 집중**해서 검색하세요." if target_version else ""
+    return f"""오늘({today}) 기준 언리얼 엔진 **{category}** 및 애니메이션 관련 **오늘 새로 올라온 정보만** 검색하세요.{ver_focus}
 
-검색 대상:
-1. Epic Games 공식 문서/블로그 (dev.epicgames.com, unrealengine.com)
-2. Epic Developer Community 튜토리얼/포럼
-3. YouTube 튜토리얼 영상 (공식 채널, Alex Forsythe, Ryan Laley, Matt Aspland 등)
-4. 80.lv, GDC, Unreal Fest 발표 자료
-5. GitHub 프로젝트/플러그인
+⚠️ 오늘({today}) 게시/업로드된 콘텐츠만 수집. 어제 이전 콘텐츠는 제외.
+오늘자 신규 정보가 없으면 "오늘 새로운 정보 없음"이라고만 응답하세요.
 
-{week_ago} 이후 새로 게시된 내용을 우선으로, 없으면 UE 5.5~5.7의 핵심 기능을 다뤄주세요.
+검색 대상 (다양한 매체를 모두 검색):
+1. YouTube — UE 공식, Alex Forsythe, Ryan Laley, Matt Aspland, Druid Mechanics, PrismaticaDev 등
+2. 80.lv, GameDev.net, Real-Time VFX, Polycount 등 커뮤니티/매체
+3. Epic Games 공식 블로그/문서 — 오늘 새 포스트만
+4. FocalRig (focalrig.com) — Procedural Look & Aim 플러그인
+5. Twitter/X, Reddit r/unrealengine — 오늘자 핫 포스트
+6. Fab 마켓플레이스 — 신규 애니메이션 플러그인/에셋
+7. GitHub — 오늘 업데이트된 프로젝트
+
+{category} 외에도 애니메이션 전반 (Control Rig, Motion Matching, AnimNext, Physics Simulation, IK, Ragdoll, Live Link, ML Deformer, GASP, Mover, Procedural Animation 등) 관련 오늘자 콘텐츠도 함께 수집.
 
 검색 결과를 **한국어**로 정리해주세요:
 - 찾은 모든 소스의 URL과 핵심 내용
-- YouTube 영상 제목, URL, 채널명, 길이
-- 공식 문서 URL과 핵심 요약
-- 최신 변경 사항 / 새 기능
-- 초보자가 알아야 할 기초 개념
-- 실무 활용 예시
+- YouTube 영상 제목, URL, 채널명
+- 오늘 새로 올라온 내용만 포함
 """
 
 
 def _build_meta_prompt(category: str, research: str) -> str:
     tag_list = ", ".join(VALID_TAGS)
+    today = date.today().strftime("%Y년 %m월 %d일")
     return f"""아래 조사 내용을 바탕으로 메타데이터만 JSON으로 추출하세요.
+
+⚠️ 중요: 오늘({today}) 게시된 콘텐츠가 있는지 판단하세요.
+오늘자 신규 콘텐츠가 없다면 "새_정보_여부": false 로 설정하세요.
 
 조사 내용:
 {research[:3000]}
@@ -467,10 +495,11 @@ def _build_meta_prompt(category: str, research: str) -> str:
 {{
   "제목": "구체적이고 실용적인 한국어 제목",
   "요약": "8~12문장 상세 요약 (한국어)",
-  "소스_링크": "https://가장_공신력_있는_URL",
+  "소스_링크": "https://오늘_올라온_원본_URL",
   "난이도": "초급 또는 중급 또는 고급",
   "UE_버전": "5.5 또는 5.6 또는 5.7 또는 5.8+",
-  "태그": ["태그1", "태그2"]
+  "태그": ["태그1", "태그2"],
+  "새_정보_여부": true 또는 false
 }}
 ```
 태그는 다음 중 1~3개만: {tag_list}

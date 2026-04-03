@@ -31,9 +31,13 @@ claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 def fetch_news_with_gemini() -> str:
     """Gemini 3.1 Pro + Google Search로 게임 뉴스 수집."""
     today = datetime.now(KST).strftime("%Y년 %m월 %d일")
-    gather_prompt = f"""오늘({today}) 최신 게임 관련 뉴스를 Google에서 검색하세요.
+    gather_prompt = f"""오늘({today}) 게임 관련 뉴스를 Google에서 검색하세요.
 
-다음 검색어들을 각각 검색하고, 검색된 기사를 모두 나열해주세요:
+⚠️ 중요: 반드시 오늘({today}) 게시된 기사만 수집하세요.
+어제 이전에 게시된 기사는 절대 포함하지 마세요.
+검색 결과에서 기사의 게시 날짜를 확인하고, 오늘 날짜가 아닌 기사는 제외하세요.
+
+다음 검색어들을 각각 검색하고, 오늘 게시된 기사만 나열해주세요:
 
 검색어 1: "게임 뉴스 오늘" (한국어 뉴스)
 검색어 2: "넥슨 엔씨소프트 크래프톤 넷마블 뉴스"
@@ -45,14 +49,19 @@ def fetch_news_with_gemini() -> str:
 
 각 검색 결과마다 반드시 아래 형식으로 작성하세요. 최소 15개 이상 기사를 나열해주세요:
 
-제목: [기사 제목]
-URL: [실제 기사 URL]
+기사번호: [1부터 순서대로]
+제목: [기사 제목 — 검색 결과에 나온 원본 제목 그대로]
+URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 출처: [매체명]
+게시일: [기사 게시 날짜]
 요약: [한 줄 요약]
 
 ---
 
-URL은 반드시 실제 검색에서 나온 원본 링크여야 합니다. 절대로 URL을 생략하거나 만들어내지 마세요."""
+⚠️ 필수 규칙:
+- URL은 반드시 실제 검색에서 나온 원본 링크여야 합니다. 절대로 URL을 생략하거나 만들어내지 마세요.
+- 제목과 URL이 반드시 같은 기사를 가리켜야 합니다. 제목은 A기사인데 URL은 B기사인 경우가 없도록 하세요.
+- 오늘({today}) 게시된 기사가 아니면 제외하세요."""
 
     google_search_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
     response = gemini_client.models.generate_content(
@@ -96,7 +105,9 @@ URL
 규칙:
 - 한국어, 각 카테고리 3~4개
 - 제목만 한 줄로 (요약 불필요)
-- 기사 URL 반드시 포함 (수집 결과에 있는 원본 URL 그대로 사용)
+- ⚠️ 오늘({today}) 게시된 기사만 포함. 어제 이전 기사는 반드시 제외
+- ⚠️ 기사 제목과 URL이 반드시 같은 기사여야 함. 수집 결과에서 제목-URL 쌍을 그대로 가져올 것
+- 수집 결과에 있는 원본 URL을 그대로 사용 (절대 URL을 수정하거나 다른 URL로 대체하지 말 것)
 - URL이 없는 뉴스는 제외
 - 중복 제거
 - URL을 임의로 만들지 말 것"""
