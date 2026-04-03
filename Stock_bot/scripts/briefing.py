@@ -20,11 +20,11 @@ import anthropic
 # 0. 설정
 # ═══════════════════════════════════════════════════════
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-NOTION_API_KEY = os.environ["NOTION_API_KEY"]
-NOTION_DB_ID   = os.environ["NOTION_DB_ID"]
+NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
+NOTION_DB_ID   = os.environ.get("NOTION_DB_ID", os.environ.get("NOTION_DATABASE_ID", ""))
 BRIEFING_TYPE  = os.environ.get("BRIEFING_TYPE", "MANUAL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -916,6 +916,19 @@ def main():
     print(f"  🚀  {LABEL}")
     print(f"  🕐  {now.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print(f"{'═'*56}\n")
+    # 환경변수 진단
+    print(f"  GEMINI_API_KEY: {'✅' if GEMINI_API_KEY else '❌ 없음'}")
+    print(f"  CLAUDE_API_KEY: {'✅' if CLAUDE_API_KEY else '❌ 없음'}")
+    print(f"  NOTION_API_KEY: {'✅' if NOTION_API_KEY else '❌ 없음'}")
+    print(f"  NOTION_DB_ID:   {'✅' if NOTION_DB_ID else '❌ 없음'}")
+    print(f"  BRIEFING_TYPE:  {BRIEFING_TYPE}")
+    print()
+    if not CLAUDE_API_KEY:
+        print("❌ CLAUDE_API_KEY / ANTHROPIC_API_KEY 환경변수가 없습니다.")
+        return
+    if not NOTION_API_KEY or not NOTION_DB_ID:
+        print("❌ NOTION_API_KEY 또는 NOTION_DB_ID 환경변수가 없습니다.")
+        return
     try:
         mkt = fetch_market()
         news = fetch_news()
