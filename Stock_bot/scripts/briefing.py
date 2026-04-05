@@ -22,7 +22,7 @@ import anthropic
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+claude_client = None  # main()에서 CLAUDE_API_KEY 검증 후 초기화
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
 NOTION_DB_ID   = os.environ.get("NOTION_DB_ID", "")
 BRIEFING_TYPE  = os.environ.get("BRIEFING_TYPE", "MANUAL")
@@ -806,6 +806,8 @@ def save(briefing, mkt):
     if db_res.status_code == 200:
         db_props = set(db_res.json().get("properties", {}).keys())
         print(f"  📋 DB 속성: {', '.join(sorted(db_props))}")
+    else:
+        print(f"  ⚠️ DB 스키마 조회 실패 ({db_res.status_code}) — 전체 속성으로 시도합니다.")
 
     # 전체 속성 매핑 (코드에서 사용하는 이름 → 값)
     all_props = {
@@ -955,6 +957,8 @@ def main():
     if not CLAUDE_API_KEY:
         print("❌ CLAUDE_API_KEY / ANTHROPIC_API_KEY 환경변수가 없습니다.")
         return
+    global claude_client
+    claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
     if not NOTION_API_KEY or not NOTION_DB_ID:
         print("❌ NOTION_API_KEY 또는 NOTION_DB_ID 환경변수가 없습니다.")
         return

@@ -8,6 +8,7 @@ Gemini 3.1 Pro (Google Search 수집) + Claude Sonnet 4.6 (분석)
   GEMINI_API_KEY, CLAUDE_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 """
 
+import html
 import os
 import json
 import time
@@ -145,7 +146,12 @@ def summarize_news(gathered_text: str) -> str:
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text.strip()
+    raw = response.content[0].text.strip()
+    # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프 (& < > 가 포함된 기사 제목 대응)
+    import re
+    def _escape_link_text(m: re.Match) -> str:
+        return f'{m.group(1)}{html.escape(m.group(2))}</a>'
+    return re.sub(r'(<a\s+href="[^"]*">)(.*?)</a>', _escape_link_text, raw)
 
 
 # ─── 텔레그램 전송 ────────────────────────────────────

@@ -17,6 +17,7 @@ import json
 import os
 import random
 import re
+import requests
 import sys
 import time
 from datetime import date, timedelta
@@ -103,13 +104,12 @@ UE_VERSIONS       = ["5.5", "5.6", "5.7", "5.8+"]
 
 def _notion_db_query(database_id: str, payload: dict) -> dict:
     """Notion API databases/query를 requests로 직접 호출 (SDK 호환성 문제 우회)."""
-    import requests as _req
     headers = {
         "Authorization": f"Bearer {NOTION_API_KEY}",
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json",
     }
-    res = _req.post(
+    res = requests.post(
         f"https://api.notion.com/v1/databases/{database_id}/query",
         headers=headers, json=payload, timeout=30,
     )
@@ -408,10 +408,10 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
         )
         meta = _extract_json(meta_text) or {}
 
-        # 신규 정보가 없으면 스킵
+        # 신규 정보가 없으면 스킵 (빈 dict 반환으로 에러와 구분)
         if not meta.get("새_정보_여부", True):
             print(f"  ℹ️ {category}: 오늘자 신규 정보 없음 — 스킵")
-            return None
+            return {}
 
         print(f"  📋 메타데이터: {meta.get('제목', category)[:50]}...")
 
@@ -1167,8 +1167,12 @@ def run_briefing(categories: list[str], *, force: bool = False, per_version: boo
                 print(f"  🔄 재시도 {attempt+2}/2 — {retry_wait}초 후...")
                 time.sleep(retry_wait)
 
+        if data is None:
+            # 실제 에러 (API 오류, 예외 등)
+            failed += 1
+            continue
         if not data:
-            # 신규 정보 없음(스킵)과 실제 에러를 구분
+            # 신규 정보 없음 — 정상 스킵 (빈 dict)
             skipped += 1
             continue
 
@@ -1222,8 +1226,6 @@ def send_telegram(results: list[dict]) -> None:
     """브리핑 결과를 텔레그램으로 전송."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-
-    import requests
 
     today = date.today().strftime("%Y.%m.%d")
     msg = f"🎮 언리얼 튜토리얼 가이드 비서\n{today} 업데이트\n\n"
