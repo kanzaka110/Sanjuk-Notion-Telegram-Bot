@@ -6,3 +6,4 @@
 - [User Profile](user_profile.md) — 텔레그램 봇 + Notion 자동화 개발자, 한국어 우선
 - [GCP .env Loading](feedback_env_loading.md) — source 대신 export xargs 방식 사용 필요
 - [GCP SSH from Local](reference_gcp_ssh.md) — gcloud CLI 설치 완료, gcp-ssh.cmd 래퍼로 원격 제어
+- [New PC Setup Guide](reference_new_pc_setup.md) — 새 PC 셋업 전체 절차 (클론, setup.sh, gcloud, SSH)
