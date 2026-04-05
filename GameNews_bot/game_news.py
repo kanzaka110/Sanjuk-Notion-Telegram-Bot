@@ -114,6 +114,10 @@ def summarize_news(gathered_text: str) -> str:
 
 출력 형식 (그대로 출력):
 
+⭐ 시프트업 (SHIFT UP)
+
+▸ <a href="URL">기사 제목</a>
+
 🏢 게임회사
 
 ▸ <a href="URL">기사 제목</a>
@@ -123,10 +127,6 @@ def summarize_news(gathered_text: str) -> str:
 🎮 게임
 
 ▸ <a href="URL">기사 제목</a>
-
-▸ <a href="URL">기사 제목</a>
-
-⭐ 시프트업 (SHIFT UP)
 
 ▸ <a href="URL">기사 제목</a>
 
