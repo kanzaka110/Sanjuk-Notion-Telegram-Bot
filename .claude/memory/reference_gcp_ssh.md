@@ -1,6 +1,6 @@
 ---
 name: GCP SSH from local
-description: 로컬 Windows에서 GCP VM에 SSH 접속하는 방법 (gcloud CLI 설치 완료)
+description: 로컬 Windows에서 GCP VM에 SSH 접속하는 방법 — ohmil(기본)/kanzaka110(서비스) 유저
 type: reference
 ---
 
