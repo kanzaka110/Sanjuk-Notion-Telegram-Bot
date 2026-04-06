@@ -1,6 +1,6 @@
 ---
 name: GCP Service Migration 2026-04-05
-description: GCP systemd 서비스 3개를 옛 경로에서 통합 리포로 마이그레이션 완료
+description: GCP systemd 서비스 3개를 옛 경로에서 통합 리포로 마이그레이션 완료, cron 래퍼 수정
 type: project
 ---
 
@@ -15,14 +15,20 @@ type: project
 
 **삭제된 옛 디렉토리:** notion-stock-update (296MB), luck-bot (91MB), Sanjuk-Claude-Code (170MB) — 총 557MB 확보
 
+**2026-04-06 cron 래퍼 스크립트 수정:**
+- 옛 디렉토리(`~/desktop-tutorial`, `~/notion-stock-update`)를 참조하던 래퍼 스크립트 5개를 통합 리포 경로로 수정
+- python -u 플래그 추가 (실시간 로그 출력)
+- Stock_bot 래퍼: 자체 .env 사용 (봇 전용 TELEGRAM_BOT_TOKEN)
+- UE_bot/GameNews_bot 래퍼: 루트 .env 사용
+
 **환경변수 구조:**
 - Stock_bot/.env: TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, CLAUDE_API_KEY, NOTION_API_KEY, NOTION_DB_ID 등
 - Luck_bot/.env: TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, ANTHROPIC_API_KEY
 - Chat_bot/.env: TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, GITHUB_TOKEN, GITHUB_REPO
-- 루트 .env: UE_bot/GameNews_bot용 (ANTHROPIC_API_KEY, NOTION_API_KEY, NOTION_DATABASE_ID 등)
+- 루트 .env: UE_bot/GameNews_bot용 (ANTHROPIC_API_KEY, NOTION_API_KEY, NOTION_DATABASE_ID, GAME_NEWS_BOT_TOKEN 등)
 - 각 봇의 TELEGRAM_BOT_TOKEN이 다르므로 봇별 .env 필수
 
 **주의:** GitHub Actions에는 NOTION_DB_ID (Stock_bot용) Secret이 미등록 상태. GCP에서만 실행하므로 문제없음.
 
 **Why:** 옛 경로 참조 제거, 단일 리포에서 코드+서비스 일관성 확보
-**How to apply:** 서비스 수정 시 `/etc/systemd/system/<서비스>.service` 편집 후 `sudo systemctl daemon-reload && sudo systemctl restart <서비스>`
+**How to apply:** 서비스 수정 시 `/etc/systemd/system/<서비스>.service` 편집 후 `sudo systemctl daemon-reload && sudo systemctl restart <서비스>`. cron 래퍼 수정 시 `~/run_*.sh` 직접 편집.
