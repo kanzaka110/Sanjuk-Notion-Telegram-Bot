@@ -88,6 +88,9 @@ CATEGORIES: list[str] = [
     "ML Deformer",
     "GASP",
     "Mover Plugin",
+    "AI Animation Tech",
+    "Physics/Simulation",
+    "GitHub/Open Source",
 ]
 
 VALID_TAGS: list[str] = [
@@ -95,6 +98,7 @@ VALID_TAGS: list[str] = [
     "Facial Animation", "Locomotion", "State Machine", "Blend Space",
     "Morph Target", "Root Motion", "Ragdoll", "Cloth Simulation",
     "Motion Capture", "Skeletal Mesh", "Vertex Animation",
+    "AI/ML", "GitHub", "Neural Animation", "Diffusion", "NeRF",
 ]
 
 DIFFICULTY_LEVELS = ["초급", "중급", "고급"]
@@ -225,32 +229,33 @@ def remove_new_badges(notion: Client) -> int:
 
 def build_search_prompt(category: str) -> str:
     today     = date.today().strftime("%Y년 %m월 %d일")
+    since     = (date.today() - timedelta(days=3)).strftime("%Y년 %m월 %d일")
 
     tag_list  = ", ".join(VALID_TAGS)
     cat_list  = ", ".join(CATEGORIES)
 
     return f"""
 당신은 언리얼 엔진 애니메이션 전문가이자 교육 콘텐츠 작성자입니다.
-오늘({today}) 기준으로 언리얼 엔진의 **{category}** 시스템에 관한 **오늘 새로 올라온 정보**를 웹에서 철저히 검색하세요.
+오늘({today}) 기준으로 언리얼 엔진의 **{category}** 시스템에 관한 **최근 3일({since}~{today}) 내 새로 올라온 정보**를 웹에서 철저히 검색하세요.
 
 ⚠️ 핵심 원칙:
-- **오늘({today}) 게시/업로드된 콘텐츠만** 수집하세요.
-- 어제 이전에 올라온 기존 문서, 튜토리얼, 영상은 포함하지 마세요.
-- 오늘자 신규 정보가 전혀 없다면, "새_정보_여부": false 로 설정하고 빈 내용으로 응답하세요.
+- **최근 3일({since}~{today}) 내 게시/업로드된 콘텐츠만** 수집하세요.
+- 그 이전에 올라온 기존 문서, 튜토리얼, 영상은 포함하지 마세요.
+- 최근 3일 내 신규 정보가 전혀 없다면, "새_정보_여부": false 로 설정하고 빈 내용으로 응답하세요.
 
 ## 검색 대상 (다양한 매체를 반드시 모두 검색)
 1. YouTube — UE 공식 채널, Alex Forsythe, Ryan Laley, Matt Aspland, Druid Mechanics, Gabriel Aguiar, PrismaticaDev 등 UE 애니메이션 유튜버
 2. 80.lv, GameDev.net, Real-Time VFX, Polycount 등 게임개발 커뮤니티/매체
 3. Epic Games 공식 블로그/문서 (dev.epicgames.com, unrealengine.com) — 새 포스트나 업데이트만
-4. Epic Developer Community 포럼 — 오늘 올라온 글만
+4. Epic Developer Community 포럼 — 최근 3일 내 올라온 글만
 5. FocalRig (focalrig.com) — Procedural Look & Aim Control Rig 플러그인
-6. Twitter/X, Reddit r/unrealengine — 오늘자 핫 포스트
+6. Twitter/X, Reddit r/unrealengine — 최근 핫 포스트
 7. Fab 마켓플레이스 — 신규 애니메이션 관련 플러그인/에셋
 8. GDC, Unreal Fest 발표 자료 (새로 공개된 것만)
-9. GitHub — 신규/업데이트된 애니메이션 관련 오픈소스
+9. GitHub — 신규/업데이트된 애니메이션 관련 오픈소스 (새 릴리스, 트렌딩 리포)
 
 ## 애니메이션 관련 전체 범위 (카테고리 무관하게 폭넓게)
-{category}뿐 아니라, 아래 키워드와 관련된 오늘자 콘텐츠도 함께 검색하세요:
+{category}뿐 아니라, 아래 키워드와 관련된 최근 3일 내 콘텐츠도 함께 검색하세요:
 - Animation Blueprint, Control Rig, Motion Matching, AnimNext/UAF
 - MetaHuman, Facial Animation, Live Link, Motion Capture
 - ML Deformer, Physics Simulation, Ragdoll, Chaos Cloth
@@ -259,13 +264,18 @@ def build_search_prompt(category: str) -> str:
 - Sequencer 애니메이션, Morph Target, Skeletal Mesh
 - Niagara 캐릭터 이펙트, Vertex Animation
 
+## AI 기술 및 GitHub (관련 있는 것만)
+- AI/ML 기반 애니메이션: Neural Animation, Motion Diffusion, AI Pose Estimation
+- AI 게임 개발 도구: Procedural Generation, AI NPC Behavior, AI Animation Retargeting
+- GitHub 인기 프로젝트: UE 플러그인, 애니메이션 도구, AI+게임 관련 신규 릴리스/업데이트
+
 ## 핵심 요구사항
 - **초보자도 따라할 수 있을 정도로 매우 상세하게** 작성
 - 모든 UI 경로는 정확히 (예: "Content Browser → 우클릭 → Animation → Animation Blueprint")
 - 모든 설정값과 파라미터를 구체적으로 명시
 - "왜" 이렇게 하는지 이유를 항상 포함
-- 찾은 YouTube 영상 링크를 포함 (오늘 올라온 것만)
-- 찾은 문서/포스트 링크를 포함 (오늘 올라온 것만)
+- 찾은 YouTube 영상 링크를 포함 (최근 3일 내 올라온 것만)
+- 찾은 문서/포스트 링크를 포함 (최근 3일 내 올라온 것만)
 
 ---
 
@@ -373,7 +383,7 @@ def _gemini_search(queries: list[str]) -> str:
 애니메이션 전반을 폭넓게 검색: Control Rig, Motion Matching, AnimNext/UAF, Physics Simulation, Ragdoll, Cloth, Blueprint, IK, Retargeting, Live Link, ML Deformer, GASP, Mover, Procedural Animation, Sequencer, MetaHuman, Skeletal Mesh 등
 
 각 검색 결과에 제목, URL, 핵심 내용을 포함해주세요. 한국어와 영어 결과 모두 포함.
-오늘 올라온 콘텐츠를 우선으로 찾아주세요."""
+최근 3일 내 올라온 콘텐츠를 우선으로 찾아주세요."""
 
     try:
         google_search_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
@@ -399,14 +409,38 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
         # ── STEP 1: Gemini 3.1 Pro + Google Search ──
         ver_q = f" UE {target_version}" if target_version else " UE5"
         today_str = date.today().strftime("%Y-%m-%d")
-        queries = [
-            f"Unreal Engine {category} tutorial new {today_str}",
-            f"언리얼 엔진 {category} 튜토리얼 {today_str}",
-            f"UE5 animation {category} YouTube {today_str}",
-            f"Unreal Engine animation Control Rig Motion Matching Physics Simulation {today_str}",
-            f"site:youtube.com UE5 animation tutorial {today_str}",
-            f"site:80.lv OR site:reddit.com/r/unrealengine unreal animation {today_str}",
+        # 최근 3일 범위 (주말에도 콘텐츠 확보)
+        three_days_ago = (date.today() - timedelta(days=3)).strftime("%Y-%m-%d")
+        date_range = f"after:{three_days_ago}"
+
+        # 카테고리별 특화 쿼리
+        base_queries = [
+            f"Unreal Engine {category} tutorial new {date_range}",
+            f"언리얼 엔진 {category} 튜토리얼 최신",
+            f"site:youtube.com UE5 {category} animation {date_range}",
+            f"site:80.lv OR site:reddit.com/r/unrealengine unreal animation {date_range}",
         ]
+
+        # AI 기술 관련 쿼리 (모든 카테고리에 추가)
+        ai_queries = [
+            f"AI animation game development machine learning {date_range}",
+            f"neural animation UE5 ML Deformer AI motion synthesis {date_range}",
+            f"AI procedural animation diffusion model NeRF game {date_range}",
+        ]
+
+        # GitHub 관련 쿼리
+        github_queries = [
+            f"site:github.com unreal engine animation plugin {date_range}",
+            f"github UE5 animation AI machine learning new release {date_range}",
+        ]
+
+        # AI/GitHub 카테고리면 해당 쿼리를 우선, 아니면 기본+보조로
+        if category == "AI Animation Tech":
+            queries = ai_queries + base_queries[:2]
+        elif category == "GitHub/Open Source":
+            queries = github_queries + base_queries[:2]
+        else:
+            queries = base_queries + [ai_queries[0], github_queries[0]]
         raw_research = _gemini_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
 
@@ -424,7 +458,7 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
 
         # 신규 정보가 없으면 스킵 (빈 dict 반환으로 에러와 구분)
         if not meta.get("새_정보_여부", True):
-            print(f"  ℹ️ {category}: 오늘자 신규 정보 없음 — 스킵")
+            print(f"  ℹ️ {category}: 최근 3일 내 신규 정보 없음 — 스킵")
             return {}
 
         print(f"  📋 메타데이터: {meta.get('제목', category)[:50]}...")
@@ -462,37 +496,42 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
 
 def _build_search_only_prompt(category: str, target_version: str | None = None) -> str:
     today = date.today().strftime("%Y년 %m월 %d일")
+    since = (date.today() - timedelta(days=3)).strftime("%Y년 %m월 %d일")
     ver_focus = f"\n\n**특히 UE {target_version} 버전에 해당하는 내용만 집중**해서 검색하세요." if target_version else ""
-    return f"""오늘({today}) 기준 언리얼 엔진 **{category}** 및 애니메이션 관련 **오늘 새로 올라온 정보만** 검색하세요.{ver_focus}
+    return f"""오늘({today}) 기준 언리얼 엔진 **{category}** 및 애니메이션 관련 **최근 3일({since}~{today}) 내 새로 올라온 정보만** 검색하세요.{ver_focus}
 
-⚠️ 오늘({today}) 게시/업로드된 콘텐츠만 수집. 어제 이전 콘텐츠는 제외.
-오늘자 신규 정보가 없으면 "오늘 새로운 정보 없음"이라고만 응답하세요.
+⚠️ 최근 3일({since}~{today}) 내 게시/업로드된 콘텐츠만 수집. 그 이전 콘텐츠는 제외.
+최근 3일 내 신규 정보가 없으면 "최근 새로운 정보 없음"이라고만 응답하세요.
 
 검색 대상 (다양한 매체를 모두 검색):
 1. YouTube — UE 공식, Alex Forsythe, Ryan Laley, Matt Aspland, Druid Mechanics, PrismaticaDev 등
 2. 80.lv, GameDev.net, Real-Time VFX, Polycount 등 커뮤니티/매체
-3. Epic Games 공식 블로그/문서 — 오늘 새 포스트만
+3. Epic Games 공식 블로그/문서 — 최근 3일 내 새 포스트만
 4. FocalRig (focalrig.com) — Procedural Look & Aim 플러그인
-5. Twitter/X, Reddit r/unrealengine — 오늘자 핫 포스트
+5. Twitter/X, Reddit r/unrealengine — 최근 핫 포스트
 6. Fab 마켓플레이스 — 신규 애니메이션 플러그인/에셋
-7. GitHub — 오늘 업데이트된 프로젝트
+7. GitHub — 최근 업데이트/릴리스된 UE 애니메이션 관련 프로젝트
 
-{category} 외에도 애니메이션 전반 (Control Rig, Motion Matching, AnimNext, Physics Simulation, IK, Ragdoll, Live Link, ML Deformer, GASP, Mover, Procedural Animation 등) 관련 오늘자 콘텐츠도 함께 수집.
+{category} 외에도 폭넓게 수집:
+- 애니메이션 전반: Control Rig, Motion Matching, AnimNext, Physics Simulation, IK, Ragdoll, Live Link, ML Deformer, GASP, Mover, Procedural Animation 등
+- AI 기술: Neural Animation, Motion Diffusion, AI Retargeting, ML 기반 애니메이션 도구
+- GitHub: UE 플러그인, 애니메이션 도구, AI+게임 관련 신규 릴리스
 
 검색 결과를 **한국어**로 정리해주세요:
 - 찾은 모든 소스의 URL과 핵심 내용
 - YouTube 영상 제목, URL, 채널명
-- 오늘 새로 올라온 내용만 포함
+- 최근 3일 내 새로 올라온 내용만 포함
 """
 
 
 def _build_meta_prompt(category: str, research: str) -> str:
     tag_list = ", ".join(VALID_TAGS)
     today = date.today().strftime("%Y년 %m월 %d일")
+    since = (date.today() - timedelta(days=3)).strftime("%Y년 %m월 %d일")
     return f"""아래 조사 내용을 바탕으로 메타데이터만 JSON으로 추출하세요.
 
-⚠️ 중요: 오늘({today}) 게시된 콘텐츠가 있는지 판단하세요.
-오늘자 신규 콘텐츠가 없다면 "새_정보_여부": false 로 설정하세요.
+⚠️ 중요: 최근 3일({since}~{today}) 내 게시된 콘텐츠가 있는지 판단하세요.
+최근 3일 내 신규 콘텐츠가 없다면 "새_정보_여부": false 로 설정하세요.
 
 조사 내용:
 {research[:3000]}
