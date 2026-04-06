@@ -358,9 +358,19 @@ def _gemini_search(queries: list[str]) -> str:
         return "(검색 결과 없음)"
 
     gc = genai.Client(api_key=gemini_api_key)
-    search_prompt = f"""다음 주제들에 대해 Google Search로 최신 정보를 검색하고 정리해주세요:
+    search_prompt = f"""다음 검색어들로 Google Search를 수행하고, 언리얼 엔진 애니메이션 관련 최신 콘텐츠를 찾아주세요:
 
 {chr(10).join(f'- {q}' for q in queries)}
+
+⚠️ 검색 범위를 넓게 잡아주세요:
+- YouTube 영상 (UE 애니메이션 유튜버: Alex Forsythe, Ryan Laley, Matt Aspland, Druid Mechanics, PrismaticaDev, Gabriel Aguiar 등)
+- 80.lv, GameDev.net, Polycount 등 게임개발 커뮤니티
+- Reddit r/unrealengine, Twitter/X
+- Epic Games 공식 블로그, Unreal Fest/GDC 발표
+- Fab 마켓플레이스 신규 애니메이션 에셋/플러그인
+- FocalRig, GitHub 오픈소스 프로젝트
+
+애니메이션 전반을 폭넓게 검색: Control Rig, Motion Matching, AnimNext/UAF, Physics Simulation, Ragdoll, Cloth, Blueprint, IK, Retargeting, Live Link, ML Deformer, GASP, Mover, Procedural Animation, Sequencer, MetaHuman, Skeletal Mesh 등
 
 각 검색 결과에 제목, URL, 핵심 내용을 포함해주세요. 한국어와 영어 결과 모두 포함.
 오늘 올라온 콘텐츠를 우선으로 찾아주세요."""
@@ -372,7 +382,7 @@ def _gemini_search(queries: list[str]) -> str:
             contents=search_prompt,
             config=genai_types.GenerateContentConfig(
                 tools=[google_search_tool],
-                max_output_tokens=2000,
+                max_output_tokens=4000,
             ),
         )
         return response.text.strip()
@@ -390,8 +400,12 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
         ver_q = f" UE {target_version}" if target_version else " UE5"
         today_str = date.today().strftime("%Y-%m-%d")
         queries = [
-            f"Unreal Engine {category} animation new today {today_str}",
-            f"언리얼 엔진 애니메이션 {category} {today_str}",
+            f"Unreal Engine {category} tutorial new {today_str}",
+            f"언리얼 엔진 {category} 튜토리얼 {today_str}",
+            f"UE5 animation {category} YouTube {today_str}",
+            f"Unreal Engine animation Control Rig Motion Matching Physics Simulation {today_str}",
+            f"site:youtube.com UE5 animation tutorial {today_str}",
+            f"site:80.lv OR site:reddit.com/r/unrealengine unreal animation {today_str}",
         ]
         raw_research = _gemini_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
@@ -1211,9 +1225,8 @@ def run_briefing(categories: list[str], *, force: bool = False, per_version: boo
     print(f"📌 Notion: https://www.notion.so/{NOTION_DATABASE_ID.replace('-', '')}")
     print(f"{'='*60}\n")
 
-    # 텔레그램 알림
-    if telegram_results:
-        send_telegram(telegram_results)
+    # 텔레그램 알림 (결과 없어도 전송)
+    send_telegram(telegram_results)
 
     if failed > 0 and success == 0 and skipped == 0:
         sys.exit(1)
@@ -1276,7 +1289,7 @@ def main() -> None:
     group  = parser.add_mutually_exclusive_group()
     group.add_argument("--all",      action="store_true", help="모든 카테고리")
     group.add_argument("--category", type=str,            help="특정 카테고리")
-    group.add_argument("--count",    type=int, default=1, help="오늘 브리핑 수 (기본 1)")
+    group.add_argument("--count",    type=int, default=3, help="오늘 브리핑 수 (기본 3)")
     parser.add_argument("--force",       action="store_true", help="중복 체크 무시 (재생성)")
     parser.add_argument("--per-version", action="store_true", help="UE 버전별 개별 페이지 생성")
     args = parser.parse_args()
