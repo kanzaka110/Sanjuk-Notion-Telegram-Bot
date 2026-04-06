@@ -355,13 +355,17 @@ def build_search_prompt(category: str) -> str:
 
 **단계별 가이드는 최소 6단계 이상**, **핵심 개념은 최소 5개**, **관련 영상은 최소 3개** 작성해주세요.
 모든 내용은 **한국어**로 작성해주세요.
+
+⚠️ URL 규칙 (가장 중요):
+- 추천_영상, 관련_문서의 URL은 반드시 위 검색 결과에서 확인된 실제 URL만 사용
+- URL을 임의로 만들거나 추측하지 말 것. 검증된 URL이 없으면 url 필드를 빈 문자열로 설정
 """.strip()
 
 
 # ─── 콘텐츠 수집 (Claude API + Web Search) ───────────────────────────────────
 
 def _gemini_search(queries: list[str]) -> str:
-    """Gemini 3.1 Pro + Google Search로 웹 검색 후 결과를 텍스트로 반환."""
+    """Gemini 3.1 Pro + Google Search로 웹 검색 후 결과(+검증된 URL 목록)를 텍스트로 반환."""
     gemini_api_key = os.getenv("GEMINI_API_KEY", "")
     if not gemini_api_key:
         print("  ⚠️ GEMINI_API_KEY 없음, 빈 결과 반환")
@@ -395,7 +399,30 @@ def _gemini_search(queries: list[str]) -> str:
                 max_output_tokens=4000,
             ),
         )
-        return response.text.strip()
+        result_text = response.text.strip()
+
+        # grounding_metadata에서 실제 검색 결과 URL 추출
+        grounding_urls = []
+        try:
+            for candidate in response.candidates:
+                gm = getattr(candidate, "grounding_metadata", None)
+                if not gm:
+                    continue
+                chunks = getattr(gm, "grounding_chunks", None) or []
+                for chunk in chunks:
+                    web = getattr(chunk, "web", None)
+                    if web and getattr(web, "uri", None):
+                        title = getattr(web, "title", "") or ""
+                        grounding_urls.append(f"[검증된 URL] 제목: {title} | URL: {web.uri}")
+        except Exception as e:
+            print(f"  ⚠️ grounding metadata 추출 실패: {e}")
+
+        if grounding_urls:
+            url_section = "\n".join(grounding_urls)
+            result_text += f"\n\n━━━ Google Search 검증된 URL 목록 ━━━\n{url_section}"
+            print(f"  📎 검증된 URL {len(grounding_urls)}개 추출")
+
+        return result_text
     except Exception as e:
         print(f"  ⚠️ Gemini 검색 오류: {e}")
         return "(검색 결과 없음)"
@@ -536,12 +563,17 @@ def _build_meta_prompt(category: str, research: str) -> str:
 조사 내용:
 {research[:3000]}
 
+⚠️ URL 규칙 (가장 중요):
+- "Google Search 검증된 URL 목록"이 있으면, 반드시 그 목록의 URL만 사용할 것
+- 검증된 URL 목록에 없는 URL은 절대 사용하지 말 것
+- URL을 임의로 만들거나 추측하지 말 것
+
 반드시 아래 JSON만 출력하세요 (다른 텍스트 없이):
 ```json
 {{
   "제목": "구체적이고 실용적인 한국어 제목",
   "요약": "8~12문장 상세 요약 (한국어)",
-  "소스_링크": "https://오늘_올라온_원본_URL",
+  "소스_링크": "검증된 URL 목록에서 가장 관련 있는 URL",
   "난이도": "초급 또는 중급 또는 고급",
   "UE_버전": "5.5 또는 5.6 또는 5.7 또는 5.8+",
   "태그": ["태그1", "태그2"],
@@ -556,6 +588,11 @@ def _build_body_prompt(category: str, research: str, target_version: str | None 
     ver_note = f"\n\n⚠️ **이 페이지는 UE {target_version} 버전 전용입니다.** 이 버전에서의 기능, 변경사항, 제한사항만 다루세요. 다른 버전과의 차이점을 명확히 표기하세요." if target_version else ""
     return f"""당신은 언리얼 엔진 애니메이션 전문 교육자입니다.
 아래 조사 내용을 바탕으로, **이전에 잘 작성된 Notion 페이지와 동일한 형식**의 마크다운 본문을 작성하세요.{ver_note}
+
+⚠️ URL 규칙 (가장 중요):
+- 조사 내용에 "Google Search 검증된 URL 목록"이 있으면, 반드시 그 목록의 URL만 사용할 것
+- 추천 영상, 관련 문서 등에 URL을 넣을 때 검증된 URL만 사용
+- URL을 임의로 만들거나 추측하지 말 것. 검증된 URL이 없으면 URL 필드를 비워둘 것
 
 ## 조사 내용
 {research[:6000]}
