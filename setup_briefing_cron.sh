@@ -11,10 +11,10 @@ set -euo pipefail
 
 # ── 경로 설정 (통합 리포 단일 경로) ───────────────────────
 REPO_DIR="$HOME/Sanjuk-Notion-Telegram-Bot"
-STOCK_DIR="$REPO_DIR/Stock_bot"
 UE_DIR="$REPO_DIR/UE_bot"
 GAMENEWS_DIR="$REPO_DIR/GameNews_bot"
 LOG_DIR="$HOME/logs/briefing"
+# 주식 관련은 Sanjuk-Stock-Simulator 별도 리포로 이전됨
 
 # ── 사전 검증 ──────────────────────────────────────────────
 echo "🔍 사전 검증 중..."
@@ -24,7 +24,7 @@ if [ ! -d "$REPO_DIR" ]; then
     exit 1
 fi
 
-for dir in "$STOCK_DIR" "$UE_DIR" "$GAMENEWS_DIR"; do
+for dir in "$UE_DIR" "$GAMENEWS_DIR"; do
     if [ ! -d "$dir" ]; then
         echo "❌ 디렉토리 없음: $dir"
         exit 1
@@ -42,13 +42,6 @@ mkdir -p "$LOG_DIR"
 
 # ── venv 및 패키지 확인 ───────────────────────────────────
 echo "📦 패키지 확인 중..."
-
-# Stock_bot
-if [ ! -d "$STOCK_DIR/venv" ]; then
-    echo "  → Stock_bot venv 생성..."
-    python3 -m venv "$STOCK_DIR/venv"
-fi
-"$STOCK_DIR/venv/bin/pip" install -q -r "$STOCK_DIR/requirements.txt"
 
 # UE_bot
 if [ ! -d "$UE_DIR/venv" ]; then
@@ -69,36 +62,11 @@ fi
 
 REPO_ENV="$REPO_DIR/.env"
 
-# 1) 투자 브리핑 (국내장 시작 전)
-cat > "$HOME/run_stock_briefing_kr.sh" << SCRIPT
-#!/bin/bash
-cd "$STOCK_DIR"
-set -a; source "$REPO_ENV"; set +a
-export BRIEFING_TYPE="KR_BEFORE"
-./venv/bin/python scripts/briefing.py >> "$LOG_DIR/stock_briefing.log" 2>&1
-SCRIPT
-chmod +x "$HOME/run_stock_briefing_kr.sh"
+# 주식 브리핑/주가 업데이트는 Sanjuk-Stock-Simulator에서 관리
+# ~/run_stock_briefing_kr.sh, ~/run_stock_briefing_us.sh, ~/run_stock_update.sh
+# → Sanjuk-Stock-Simulator/deploy/ 래퍼 사용
 
-# 2) 투자 브리핑 (미국장 시작 전)
-cat > "$HOME/run_stock_briefing_us.sh" << SCRIPT
-#!/bin/bash
-cd "$STOCK_DIR"
-set -a; source "$REPO_ENV"; set +a
-export BRIEFING_TYPE="US_BEFORE"
-./venv/bin/python scripts/briefing.py >> "$LOG_DIR/stock_briefing.log" 2>&1
-SCRIPT
-chmod +x "$HOME/run_stock_briefing_us.sh"
-
-# 3) 주가 업데이트 (Notion)
-cat > "$HOME/run_stock_update.sh" << SCRIPT
-#!/bin/bash
-cd "$STOCK_DIR"
-set -a; source "$REPO_ENV"; set +a
-./venv/bin/python update_price.py >> "$LOG_DIR/stock_update.log" 2>&1
-SCRIPT
-chmod +x "$HOME/run_stock_update.sh"
-
-# 4) UE 애니메이션 브리핑
+# 1) UE 애니메이션 브리핑
 cat > "$HOME/run_ue_briefing.sh" << SCRIPT
 #!/bin/bash
 cd "$UE_DIR"
@@ -117,7 +85,7 @@ export TELEGRAM_BOT_TOKEN="\$GAME_NEWS_BOT_TOKEN"
 SCRIPT
 chmod +x "$HOME/run_game_news.sh"
 
-echo "✅ 래퍼 스크립트 5개 생성 완료"
+echo "✅ 래퍼 스크립트 2개 생성 완료 (주식 관련은 Sanjuk-Stock-Simulator에서 관리)"
 
 # ── crontab 등록 ──────────────────────────────────────────
 # 타임존: Asia/Seoul (KST)

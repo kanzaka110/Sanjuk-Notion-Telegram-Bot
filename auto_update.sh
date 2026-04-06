@@ -26,7 +26,7 @@ if [ "$LOCAL" != "$REMOTE" ]; then
     git pull --quiet origin master 2>/dev/null || git pull --quiet origin main 2>/dev/null
     echo "$(date '+%Y-%m-%d %H:%M:%S') 코드 업데이트 감지, 봇 재시작..." >> "$LOG"
 
-    for svc in chatbot stock-bot ue-bot game-news-bot luck-bot; do
+    for svc in chatbot ue-bot game-news-bot luck-bot; do
         sudo systemctl restart "$svc"
         echo "$(date '+%Y-%m-%d %H:%M:%S') $svc 재시작" >> "$LOG"
     done
