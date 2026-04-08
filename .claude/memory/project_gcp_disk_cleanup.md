@@ -1,23 +1,29 @@
 ---
-name: GCP Disk Cleanup 2026-04-06
-description: GCP 디스크 84%→71% 정리 완료, 정기 정리 필요 항목 기록
+name: GCP Disk Upgrade 2026-04-08
+description: GCP 디스크 10GB→20GB 확장 완료 (43% 사용), ohmil Stock-Simulator 중복 삭제
 type: project
 ---
 
-2026-04-06 GCP 디스크 정리 수행. 7.6G/9.7G (84%) → 6.4G/9.7G (71%), 약 1.2GB 확보.
+## 2026-04-08 디스크 확장
 
-**정리 항목:**
-- apt 캐시: `sudo apt-get clean` (~377MB)
-- journal 로그: `sudo journalctl --vacuum-time=3d` (237MB)
-- /var/log 오래된 로그: `.gz`, `.1`, `.old` 삭제 + syslog/btmp/auth.log truncate (~550MB)
-- google-cloud-ops-agent 로그: `/var/log/google-cloud-ops-agent/` 정리
-- pip 캐시: `~/.cache/pip` 삭제
-- exim4 로그: truncate
+디스크 10GB → **20GB** 확장. 사용률 90% → **43%** (11G 여유).
 
-**주요 공간 소비자 (정리 후):**
-- ~/Sanjuk-Notion-Telegram-Bot/venv: 320MB (필수, 삭제 불가)
-- ~/Sanjuk-Notion-Telegram-Bot: 322MB 전체
-- /var/log: 정리 후에도 ops-agent, journal이 계속 쌓임
+**작업 내용:**
+1. ohmil 유저의 중복 Sanjuk-Stock-Simulator 삭제 (289MB 확보)
+2. gcloud로 디스크 리사이즈: `sanjuk-talk-bot` 디스크 10→20GB
+3. VM 내 파티션 확장: `growpart` + `resize2fs`
 
-**Why:** e2-micro 인스턴스 디스크 10GB로 주기적 정리 필요
-**How to apply:** 디스크 80% 이상 시 위 명령어 순서대로 실행. journal은 3일 유지가 적절.
+**디스크 정보:**
+- 디스크명: `sanjuk-talk-bot` (인스턴스명 `sanjuk-project`와 다름, GCP에서 디스크 이름 변경 불가)
+- 타입: pd-balanced
+- 비용: ~$0.80/월 (기존 $0.40 + 추가 $0.40)
+
+**정기 정리 명령어 (필요 시):**
+```bash
+sudo apt-get clean && sudo journalctl --vacuum-time=3d
+sudo find /var/log -name '*.gz' -delete && sudo find /var/log -name '*.1' -delete
+rm -rf ~/.cache/pip
+```
+
+**Why:** 10GB에서 지속적으로 80-90% 도달, 관리 부담 큼
+**How to apply:** 20GB로 여유 생겼으므로 당분간 정리 불필요. 80% 이상 시 위 명령어 실행.

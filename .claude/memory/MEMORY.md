@@ -5,7 +5,7 @@
 - [Repo Consolidation 2026-04-01](project_repo_consolidation.md) — 분산 리포 5개를 단일 리포로 통합 완료
 - [GCP Service Migration](project_gcp_service_migration.md) — systemd 마이그레이션 + 주식 서비스 분리 (04-06)
 - [Briefing Improvements 2026-04-06](project_briefing_improvements.md) — UE 3일 검색/AI/GitHub 추가, URL 검증, 게임뉴스 시프트업
-- [GCP Disk Cleanup 2026-04-06](project_gcp_disk_cleanup.md) — 디스크 84%→71% 정리, 정기 정리 명령어
+- [GCP Disk Upgrade 2026-04-08](project_gcp_disk_cleanup.md) — 디스크 10→20GB 확장 완료 (43%), 디스크명=sanjuk-talk-bot
 - [User Profile](user_profile.md) — 텔레그램 봇 + Notion 자동화 개발자, 한국어 우선
 - [Push/Pull Commands](feedback_update_all.md) — "푸시"=전체 아웃바운드, "풀"=외부→로컬 동기화
 - [GCP .env Loading](feedback_env_loading.md) — source 대신 export xargs 방식 사용 필요

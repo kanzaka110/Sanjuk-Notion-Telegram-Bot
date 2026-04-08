@@ -12,7 +12,7 @@ type: feedback
 2. **GitHub** — 변경사항 git add + commit + push origin master
 3. **GCP** — SSH로 git pull + 변경된 봇 재시작 (코드 변경 있을 때만)
    ```
-   cmd.exe //c "C:\dev\Sanjuk-Notion-Telegram-Bot\gcp-ssh.cmd" "cd ~/Sanjuk-Notion-Telegram-Bot && git pull origin master"
+   cmd.exe //c "C:\dev\Sanjuk-Notion-Telegram-Bot\gcp-ssh.cmd" "sudo -u kanzaka110 bash -c 'cd ~/Sanjuk-Notion-Telegram-Bot && git pull origin master'"
    ```
 4. **모바일** — 리모트 트리거 설정 변경 있으면 업데이트
 
