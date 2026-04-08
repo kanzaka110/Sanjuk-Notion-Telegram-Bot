@@ -11,3 +11,4 @@
 - [GCP .env Loading](feedback_env_loading.md) — source 대신 export xargs 방식 사용 필요
 - [GCP SSH from Local](reference_gcp_ssh.md) — gcloud CLI, ohmil(기본)/kanzaka110(서비스) 유저
 - [New PC Setup Guide](reference_new_pc_setup.md) — 새 PC 셋업 전체 절차 (클론, setup.sh, gcloud, SSH)
+- [Remote Triggers](reference_remote_triggers.md) — 모바일 Claude Code용 GCP 봇 관리 트리거 6개 (04-08)
