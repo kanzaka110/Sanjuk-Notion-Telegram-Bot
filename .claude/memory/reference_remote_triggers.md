@@ -5,8 +5,9 @@ type: reference
 ---
 
 GCP sanjuk-project의 텔레그램 봇 4개를 모바일에서 관리하기 위한 리모트 트리거.
-Bridge 환경: `sanjuk-project:Sanjuk-Notion-Telegram-Bot` (`env_01Xgo6Y8GeByh2oHF9o2WVdC`)
-GCP에서 `claude bridge` 명령으로 등록 (~/Sanjuk-Notion-Telegram-Bot 디렉토리).
+**모바일 대화형 세션:** `claude remote-control --name 'Sanjuk-Telegram-Bot (GCP)'` (tmux session: telegram)
+**트리거 실행 환경:** `sanjuk-project:Sanjuk-Stock-Simulator` (`env_01JceVCDtJ5t9XJdbxSpm3ZE`) — 같은 GCP 인스턴스
+**스크립트:** `scripts/gcp-setup-remote.sh`, `scripts/gcp-restart-remote.sh`, `scripts/gcp-status.cmd`
 
 | 트리거 | ID | 스케줄 | 상태 | 용도 |
 |--------|-----|--------|------|------|
