@@ -2,19 +2,23 @@
 name: Push/Pull Sync Commands
 description: "푸시"=전체 동기화 아웃바운드, "풀"=외부→로컬 동기화, "최신업데이트"=푸시와 동일
 type: feedback
+originSessionId: abf5e759-3aed-4827-a22e-aa37455b2978
 ---
-
 ## "푸시" (또는 "최신업데이트")
 
 로컬 → 외부 전체 동기화. 묻지 않고 순서대로 실행:
 
 1. **메모리** — 변경/추가할 메모리 저장 (MEMORY.md 인덱스 포함)
 2. **GitHub** — 변경사항 git add + commit + push origin master
-3. **GCP** — SSH로 git pull + 변경된 봇 재시작 (코드 변경 있을 때만)
+3. **GCP 코드** — SSH로 git pull + 변경된 봇 재시작 (코드 변경 있을 때만)
    ```
    cmd.exe //c "C:\dev\Sanjuk-Notion-Telegram-Bot\gcp-ssh.cmd" "sudo -u kanzaka110 bash -c 'cd ~/Sanjuk-Notion-Telegram-Bot && git pull origin master'"
    ```
-4. **모바일** — 리모트 트리거 설정 변경 있으면 업데이트
+4. **GCP 메모리** — Claude Code 메모리+규칙을 GCP에 동기화
+   ```
+   cmd.exe //c "C:\dev\Sanjuk-Notion-Telegram-Bot\scripts\claude-config-push.cmd"
+   ```
+5. **모바일** — 리모트 트리거 설정 변경 있으면 업데이트
 
 ## "풀"
 

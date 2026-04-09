@@ -12,3 +12,4 @@
 - [GCP SSH from Local](reference_gcp_ssh.md) — gcloud CLI, ohmil(기본)/kanzaka110(서비스) 유저
 - [New PC Setup Guide](reference_new_pc_setup.md) — 새 PC 셋업 전체 절차 (클론, setup.sh, gcloud, SSH)
 - [Remote Triggers](reference_remote_triggers.md) — 모바일 Claude Code용 GCP 봇 관리 트리거 6개 (04-08)
+- [GCP Memory Sync](feedback_gcp_memory_sync.md) — 메모리 변경 시 GCP 자동 푸시, 다중 환경 동기화

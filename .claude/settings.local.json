@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcloud compute instances describe sanjuk-project:*)",
+      "Bash(cd /tmp)",
+      "Bash(gh repo:*)",
+      "Bash(rm -rf claw-code)",
+      "Bash(wc:*)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -20 {}')",
+      "Bash(cmd.exe:*)",
+      "Skill(update-config)",
+      "Bash(python:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "grep -q 'C--dev-Sanjuk-Notion-Telegram-Bot.memory' && cmd.exe /c \"C:\\dev\\Sanjuk-Notion-Telegram-Bot\\scripts\\claude-config-push.cmd\" || true",
+            "timeout": 120,
+            "statusMessage": "Syncing memory to GCP...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

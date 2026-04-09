@@ -30,3 +30,5 @@ Thumbs.db
 
 # Local GCP tools
 gcp-ssh.cmd
+scripts/claude-config-push.cmd
+scripts/claude-config-pull.cmd
