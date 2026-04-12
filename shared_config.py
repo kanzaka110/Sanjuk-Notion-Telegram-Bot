@@ -80,7 +80,7 @@ def claude_cli(
     Returns:
         CLI 응답 텍스트. 실패 시 빈 문자열.
     """
-    cmd = [CLAUDE_CLI, "-p", prompt, "--model", model, "--bare"]
+    cmd = [CLAUDE_CLI, "-p", prompt, "--model", model]
     if system_prompt:
         cmd += ["--system-prompt", system_prompt]
     if web_search:
