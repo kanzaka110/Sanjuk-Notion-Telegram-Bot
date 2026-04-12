@@ -14,3 +14,4 @@
 - [Remote Triggers & Sessions](reference_remote_triggers.md) — 리모트 세션 4개 + 트리거 8개 (04-12 업데이트)
 - [GCP Memory Sync](feedback_gcp_memory_sync.md) — 메모리 변경 시 GCP 자동 푸시, 다중 환경 동기화
 - [GCP Execution](feedback_gcp_execution.md) — 봇 실행/테스트는 항상 GCP에서 (로컬은 편집/커밋만)
+- [하네스 적용](project_harness.md) — 2026-04-12 test_harness.py(12개) + validate.py 적용
