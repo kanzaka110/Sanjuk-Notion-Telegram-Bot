@@ -14,7 +14,6 @@ import pytest_asyncio
 
 # config 로딩 전에 환경변수 설정
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
-os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "12345")
 
 import sys
@@ -140,34 +139,8 @@ class TestCommandHandlers:
 
         update.message.reply_text.assert_called_once()
         text = update.message.reply_text.call_args[0][0]
-        assert "/deep" in text
         assert "/status" in text
-
-    @pytest.mark.asyncio
-    async def test_cmd_deep_switches_to_pro(self) -> None:
-        """/deep 명령어가 Pro 모드로 전환."""
-        from chat_bot import cmd_deep, gemini
-
-        update = _make_update(chat_id=ALLOWED_CHAT_ID)
-        context = _make_context()
-
-        with patch.object(gemini, "switch_to_pro", return_value=(True, "Pro 모드 전환")):
-            await cmd_deep(update, context)
-
-        update.message.reply_text.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cmd_casual_switches_to_flash(self) -> None:
-        """/casual 명령어가 Flash 모드로 복귀."""
-        from chat_bot import cmd_casual, gemini
-
-        update = _make_update(chat_id=ALLOWED_CHAT_ID)
-        context = _make_context()
-
-        with patch.object(gemini, "switch_to_flash", return_value="Flash 모드 복귀"):
-            await cmd_casual(update, context)
-
-        update.message.reply_text.assert_called_once()
+        assert "/help" in text
 
     @pytest.mark.asyncio
     async def test_cmd_status_shows_stats(self) -> None:
@@ -177,9 +150,9 @@ class TestCommandHandlers:
         update = _make_update(chat_id=ALLOWED_CHAT_ID)
         context = _make_context()
 
-        mock_stats = {"total": 10, "flash": 8, "pro": 2}
+        mock_stats = {"total": 10}
         with (
-            patch.object(gemini, "get_status", return_value="Flash 모드"),
+            patch.object(gemini, "get_status", return_value="Claude CLI 모드"),
             patch("chat_bot.get_daily_stats", new_callable=AsyncMock, return_value=mock_stats),
         ):
             await cmd_status(update, context)
@@ -290,12 +263,8 @@ class TestHandleMessage:
         with (
             patch("chat_bot._check_and_save_segment", new_callable=AsyncMock),
             patch("chat_bot.save_message", new_callable=AsyncMock) as mock_save,
-            patch("chat_bot.store_memory", new_callable=AsyncMock),
             patch("chat_bot.get_recent_messages", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.search_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_memory_context", return_value=""),
-            patch("chat_bot.get_core_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_core_memory", return_value=""),
+            patch("chat_bot.get_full_context", return_value=""),
             patch.object(
                 gemini,
                 "ask",
@@ -322,12 +291,8 @@ class TestHandleMessage:
         with (
             patch("chat_bot._check_and_save_segment", new_callable=AsyncMock),
             patch("chat_bot.save_message", new_callable=AsyncMock),
-            patch("chat_bot.store_memory", new_callable=AsyncMock),
             patch("chat_bot.get_recent_messages", new_callable=AsyncMock) as mock_recent,
-            patch("chat_bot.search_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_memory_context", return_value=""),
-            patch("chat_bot.get_core_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_core_memory", return_value=""),
+            patch("chat_bot.get_full_context", return_value=""),
             patch.object(
                 gemini,
                 "ask",
@@ -353,22 +318,16 @@ class TestHandleMessage:
         with (
             patch("chat_bot._check_and_save_segment", new_callable=AsyncMock),
             patch("chat_bot.save_message", new_callable=AsyncMock),
-            patch("chat_bot.store_memory", new_callable=AsyncMock),
             patch("chat_bot.get_recent_messages", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.search_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_memory_context", return_value=""),
-            patch("chat_bot.get_core_memory", new_callable=AsyncMock, return_value=[]),
-            patch("chat_bot.format_core_memory", return_value=""),
+            patch("chat_bot.get_full_context", return_value=""),
             patch.object(
                 gemini,
                 "ask",
                 new_callable=AsyncMock,
-                return_value=("응답", "자동 Flash 전환"),
+                return_value=("응답", None),
             ),
         ):
             await handle_message(update, context)
 
-        # 폴백 알림 + 응답 = 최소 2번 호출
-        assert update.message.reply_text.call_count >= 2
-        first_call = update.message.reply_text.call_args_list[0][0][0]
-        assert "자동 Flash 전환" in first_call
+        # 응답 전송
+        update.message.reply_text.assert_called()

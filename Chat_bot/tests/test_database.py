@@ -10,7 +10,6 @@ import pytest_asyncio
 
 # config 로딩 전에 환경변수 설정
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test")
-os.environ.setdefault("GEMINI_API_KEY", "test")
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

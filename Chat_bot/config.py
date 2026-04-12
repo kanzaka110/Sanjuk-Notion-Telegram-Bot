@@ -18,12 +18,8 @@ KST = timezone(timedelta(hours=9))
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0"))
 
-# ─── Gemini API ─────────────────────────────────────────
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-MODEL_FLASH = "gemini-2.5-flash"
-MODEL_PRO = "gemini-2.5-pro"
-PRO_DAILY_LIMIT = 100
-PRO_WARNING_THRESHOLD = 80  # 80%에서 자동 Flash 폴백
+# ─── Claude CLI ─────────────────────────────────────────
+# 모든 AI 호출은 shared_config.claude_cli()를 통해 Claude CLI로 처리
 
 # ─── 데이터베이스 ───────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "conversations.db")

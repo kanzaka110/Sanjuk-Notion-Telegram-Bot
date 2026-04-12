@@ -35,14 +35,15 @@ class TestEnvRequirements:
         keys = [r.key for r in COMMON_ENV]
         assert "TELEGRAM_BOT_TOKEN" in keys
 
-    def test_common_env_has_gemini_key(self) -> None:
-        """공통 환경변수에 GEMINI_API_KEY 포함."""
+    def test_common_env_no_api_keys(self) -> None:
+        """공통 환경변수에 API 키가 없음 (Claude CLI 사용)."""
         keys = [r.key for r in COMMON_ENV]
-        assert "GEMINI_API_KEY" in keys
+        assert "GEMINI_API_KEY" not in keys
+        assert "ANTHROPIC_API_KEY" not in keys
 
-    def test_all_bots_have_extra_env(self) -> None:
-        """4개 봇 모두 추가 환경변수 정의."""
-        expected_bots = {"Chat_bot", "Luck_bot", "UE_bot", "GameNews_bot"}
+    def test_bots_have_extra_env(self) -> None:
+        """UE_bot과 Chat_bot이 추가 환경변수 정의."""
+        expected_bots = {"Chat_bot", "UE_bot"}
         assert set(BOT_EXTRA_ENV.keys()) == expected_bots
 
     def test_ue_bot_requires_notion(self) -> None:
@@ -83,8 +84,8 @@ class TestValidateEnv:
         """필수 환경변수 누락 시 키 목록 반환 (exit_on_fail=False)."""
         with patch.dict(os.environ, {}, clear=True):
             result = validate_env("Luck_bot", exit_on_fail=False)
-        # TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, ANTHROPIC_API_KEY 모두 필수
-        assert len(result) >= 3
+        # TELEGRAM_BOT_TOKEN만 필수 (Luck_bot에 추가 필수 없음)
+        assert len(result) >= 1
 
     def test_missing_required_exits(self) -> None:
         """필수 환경변수 누락 + exit_on_fail=True → SystemExit."""

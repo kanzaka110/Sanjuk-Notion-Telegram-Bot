@@ -9,12 +9,16 @@
   3. 봇별 config.py    — 봇별 설정, 프롬프트
 """
 
+import logging
 import os
+import subprocess
 import sys
 from datetime import timedelta, timezone
 from typing import NamedTuple
 
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 
 # ─── 타임존 ─────────────────────────────────────────────
@@ -38,7 +42,6 @@ class EnvRequirement(NamedTuple):
 COMMON_ENV = [
     EnvRequirement("TELEGRAM_BOT_TOKEN", True, "텔레그램 봇 토큰"),
     EnvRequirement("TELEGRAM_CHAT_ID", False, "허용 Chat ID"),
-    EnvRequirement("GEMINI_API_KEY", True, "Gemini API 키"),
 ]
 
 BOT_EXTRA_ENV: dict[str, list[EnvRequirement]] = {
@@ -46,18 +49,65 @@ BOT_EXTRA_ENV: dict[str, list[EnvRequirement]] = {
         EnvRequirement("GITHUB_TOKEN", False, "GitHub 메모리 push용"),
         EnvRequirement("GITHUB_REPO", False, "GitHub 리포 경로"),
     ],
-    "Luck_bot": [
-        EnvRequirement("ANTHROPIC_API_KEY", True, "Claude Sonnet API 키"),
-    ],
     "UE_bot": [
-        EnvRequirement("ANTHROPIC_API_KEY", True, "Claude Sonnet API 키"),
         EnvRequirement("NOTION_API_KEY", True, "Notion API 키"),
         EnvRequirement("NOTION_DATABASE_ID", True, "Notion DB ID"),
     ],
-    "GameNews_bot": [
-        EnvRequirement("ANTHROPIC_API_KEY", True, "Claude Sonnet API 키"),
-    ],
 }
+
+
+# ─── Claude CLI 유틸리티 ───────────────────────────��───
+CLAUDE_CLI = "/usr/bin/claude"
+
+
+def claude_cli(
+    prompt: str,
+    *,
+    model: str = "sonnet",
+    system_prompt: str = "",
+    timeout: int = 120,
+    web_search: bool = False,
+    json_schema: str = "",
+) -> str:
+    """Claude CLI를 subprocess로 호출한다 (API 비용 $0).
+
+    Args:
+        prompt: 사용자 프롬프트
+        model: 모델 선택 (sonnet, opus, haiku)
+        system_prompt: 시스템 프롬프트 (선택)
+        timeout: 타임아웃 (초)
+        web_search: 웹 검색 도구 활성화
+        json_schema: JSON 스키마 (구조화된 출력)
+
+    Returns:
+        CLI 응답 텍스트. 실패 시 빈 문자열.
+    """
+    cmd = [CLAUDE_CLI, "-p", prompt, "--model", model, "--bare"]
+    if system_prompt:
+        cmd += ["--system-prompt", system_prompt]
+    if web_search:
+        cmd += ["--allowedTools", "WebSearch,WebFetch"]
+    if json_schema:
+        cmd += ["--json-schema", json_schema]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        log.warning("Claude CLI 실패: returncode=%d, stderr=%s",
+                    result.returncode, result.stderr[:200] if result.stderr else "")
+        return ""
+    except subprocess.TimeoutExpired:
+        log.warning("Claude CLI 타임아웃 (%d초)", timeout)
+        return ""
+    except FileNotFoundError:
+        log.error("Claude CLI를 찾을 수 없습니다: %s", CLAUDE_CLI)
+        return ""
+    except Exception as e:
+        log.warning("Claude CLI 오류: %s", e)
+        return ""
 
 
 def validate_env(bot_name: str, *, exit_on_fail: bool = True) -> list[str]:

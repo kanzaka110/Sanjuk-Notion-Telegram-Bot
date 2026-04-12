@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test")
-os.environ.setdefault("GEMINI_API_KEY", "test")
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

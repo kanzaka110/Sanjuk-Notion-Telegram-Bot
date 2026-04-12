@@ -1,38 +1,36 @@
 """
 🎮 게임뉴스 데일리 브리핑
 ━━━━━━━━━━━━━━━━━━━━━━━
-Gemini 3.1 Pro (Google Search 수집) + Claude Sonnet 4.6 (분석)
+Claude CLI (WebSearch 수집 + 분석)
 매일 아침 9시 KST 텔레그램 전송
 
 환경변수:
-  GEMINI_API_KEY, CLAUDE_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 """
 
 import html
 import os
-import json
-import time
+import re
+import sys
 import requests
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
-from google import genai
-from google.genai import types as genai_types
-import anthropic
+# shared_config에서 Claude CLI 유틸리티 로드
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_config import claude_cli
 
 # ─── 설정 ──────────────────────────────────────────────
-GEMINI_API_KEY     = os.environ["GEMINI_API_KEY"]
-CLAUDE_API_KEY     = os.environ.get("CLAUDE_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 KST = timezone(timedelta(hours=9))
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
-# ─── 뉴스 수집 (Gemini 3.1 Pro + Google Search) ──────
-def fetch_news_with_gemini() -> str:
-    """Gemini 3.1 Pro + Google Search로 게임 뉴스 수집."""
+
+# ─── 뉴스 수집 (Claude CLI + WebSearch) ─────────────────
+def fetch_news() -> str:
+    """Claude CLI + WebSearch로 게임 뉴스 수집."""
     today = datetime.now(KST).strftime("%Y년 %m월 %d일")
-    gather_prompt = f"""오늘({today}) 게임 관련 뉴스를 Google에서 검색하세요.
+    gather_prompt = f"""오늘({today}) 게임 관련 뉴스를 웹에서 검색하세요.
 
 ⚠️ 중요: 반드시 오늘({today}) 게시된 기사만 수집하세요.
 어제 이전에 게시된 기사는 절대 포함하지 마세요.
@@ -66,44 +64,11 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 - 제목과 URL이 반드시 같은 기사를 가리켜야 합니다. 제목은 A기사인데 URL은 B기사인 경우가 없도록 하세요.
 - 오늘({today}) 게시된 기사가 아니면 제외하세요."""
 
-    google_search_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
-    response = gemini_client.models.generate_content(
-        model="gemini-2.5-pro",
-        contents=gather_prompt,
-        config=genai_types.GenerateContentConfig(
-            tools=[google_search_tool],
-            max_output_tokens=8000,
-        ),
-    )
-
-    # Gemini 텍스트 응답
-    result_text = response.text.strip()
-
-    # grounding_metadata에서 실제 검색 결과 URL 추출
-    grounding_urls = []
-    try:
-        for candidate in response.candidates:
-            gm = getattr(candidate, "grounding_metadata", None)
-            if not gm:
-                continue
-            chunks = getattr(gm, "grounding_chunks", None) or []
-            for chunk in chunks:
-                web = getattr(chunk, "web", None)
-                if web and getattr(web, "uri", None):
-                    title = getattr(web, "title", "") or ""
-                    grounding_urls.append(f"[검증된 URL] 제목: {title} | URL: {web.uri}")
-    except Exception as e:
-        print(f"  ⚠️ grounding metadata 추출 실패: {e}")
-
-    if grounding_urls:
-        url_section = "\n".join(grounding_urls)
-        result_text += f"\n\n━━━ Google Search 검증된 URL 목록 ━━━\n{url_section}"
-        print(f"  📎 검증된 URL {len(grounding_urls)}개 추출")
-
-    return result_text
+    result = claude_cli(gather_prompt, model="sonnet", web_search=True, timeout=180)
+    return result or "(검색 결과 없음)"
 
 
-# ─── Claude Sonnet으로 정리 ──────────────────────────
+# ─── Claude CLI로 정리 ──────────────────────────────────
 def summarize_news(gathered_text: str) -> str:
     today = datetime.now(KST).strftime("%Y년 %m월 %d일")
 
@@ -140,22 +105,16 @@ def summarize_news(gathered_text: str) -> str:
 - 각 기사 사이에 반드시 빈 줄 하나를 넣어서 간격을 줄 것
 - ⚠️ 오늘({today}) 게시된 기사만 포함. 어제 이전 기사는 반드시 제외
 - ⚠️ URL 규칙 (가장 중요):
-  - "Google Search 검증된 URL 목록"이 있으면, 반드시 그 목록의 URL만 사용할 것
-  - 검증된 URL 목록의 제목과 URL 쌍을 그대로 사용할 것
-  - 검증된 URL 목록에 없는 URL은 절대 사용하지 말 것
+  - 수집 결과에 있는 URL만 사용할 것
   - URL을 임의로 만들거나 추측하지 말 것
   - URL을 수정하거나 다른 URL로 대체하지 말 것
 - URL이 없는 뉴스는 제외
 - 중복 제거"""
 
-    response = claude_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip()
-    # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프 (& < > 가 포함된 기사 제목 대응)
-    import re
+    raw = claude_cli(prompt, model="sonnet", timeout=120)
+    if not raw:
+        return "뉴스 정리에 실패했습니다."
+    # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프
     def _escape_link_text(m: re.Match) -> str:
         return f'{m.group(1)}{html.escape(m.group(2))}</a>'
     return re.sub(r'(<a\s+href="[^"]*">)(.*?)</a>', _escape_link_text, raw)
@@ -195,9 +154,9 @@ def main():
     print(f"🕐 {now.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print(f"{'='*50}\n")
 
-    # 1. Gemini로 뉴스 수집
-    print("🔍 Gemini 3.1 Pro — Google Search로 게임 뉴스 수집...")
-    gathered = fetch_news_with_gemini()
+    # 1. Claude CLI로 뉴스 수집
+    print("🔍 Claude CLI + WebSearch로 게임 뉴스 수집...")
+    gathered = fetch_news()
     print(f"  → 수집 완료 ({len(gathered)}자)\n")
 
     if not gathered or gathered == "(검색 결과 없음)":
@@ -205,8 +164,8 @@ def main():
         send_telegram("오늘은 수집된 게임 뉴스가 없습니다.")
         return
 
-    # 2. Sonnet으로 정리
-    print("🤖 Claude Sonnet 4.6으로 정리 중...")
+    # 2. Claude CLI로 정리
+    print("🤖 Claude CLI로 정리 중...")
     summary = summarize_news(gathered)
     print(f"  → 정리 완료 ({len(summary)}자)\n")
 

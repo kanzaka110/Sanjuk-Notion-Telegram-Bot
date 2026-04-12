@@ -40,18 +40,9 @@ def _load_env() -> None:
 
 _load_env()
 
-try:
-    import anthropic
-except ImportError:
-    print("❌ anthropic 패키지 필요: pip install anthropic")
-    sys.exit(1)
-
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    print("❌ google-genai 패키지 필요: pip install google-genai")
-    sys.exit(1)
+# shared_config에서 Claude CLI 유틸리티 로드
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_config import claude_cli
 
 try:
     from notion_client import Client
@@ -73,7 +64,6 @@ except ImportError:
 
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "4fd756cb968d4439b9e80bbc69184a57")
 NOTION_API_KEY     = os.getenv("NOTION_API_KEY", "")
-ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -364,15 +354,9 @@ def build_search_prompt(category: str) -> str:
 
 # ─── 콘텐츠 수집 (Claude API + Web Search) ───────────────────────────────────
 
-def _gemini_search(queries: list[str]) -> str:
-    """Gemini 3.1 Pro + Google Search로 웹 검색 후 결과(+검증된 URL 목록)를 텍스트로 반환."""
-    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
-    if not gemini_api_key:
-        print("  ⚠️ GEMINI_API_KEY 없음, 빈 결과 반환")
-        return "(검색 결과 없음)"
-
-    gc = genai.Client(api_key=gemini_api_key)
-    search_prompt = f"""다음 검색어들로 Google Search를 수행하고, 언리얼 엔진 애니메이션 관련 최신 콘텐츠를 찾아주세요:
+def _web_search(queries: list[str]) -> str:
+    """Claude CLI + WebSearch로 웹 검색 후 결과를 텍스트로 반환."""
+    search_prompt = f"""다음 검색어들로 웹 검색을 수행하고, 언리얼 엔진 애니메이션 관련 최신 콘텐츠를 찾아주세요:
 
 {chr(10).join(f'- {q}' for q in queries)}
 
@@ -387,56 +371,20 @@ def _gemini_search(queries: list[str]) -> str:
 애니메이션 전반을 폭넓게 검색: Control Rig, Motion Matching, AnimNext/UAF, Physics Simulation, Ragdoll, Cloth, Blueprint, IK, Retargeting, Live Link, ML Deformer, GASP, Mover, Procedural Animation, Sequencer, MetaHuman, Skeletal Mesh 등
 
 각 검색 결과에 제목, URL, 핵심 내용을 포함해주세요. 한국어와 영어 결과 모두 포함.
-최근 3일 내 올라온 콘텐츠를 우선으로 찾아주세요."""
+최근 3일 내 올라온 콘텐츠를 우선으로 찾아주세요.
+검색 결과에서 확인된 실제 URL만 포함하세요."""
 
-    try:
-        google_search_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
-        response = gc.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=search_prompt,
-            config=genai_types.GenerateContentConfig(
-                tools=[google_search_tool],
-                max_output_tokens=4000,
-            ),
-        )
-        result_text = response.text.strip()
-
-        # grounding_metadata에서 실제 검색 결과 URL 추출
-        grounding_urls = []
-        try:
-            for candidate in response.candidates:
-                gm = getattr(candidate, "grounding_metadata", None)
-                if not gm:
-                    continue
-                chunks = getattr(gm, "grounding_chunks", None) or []
-                for chunk in chunks:
-                    web = getattr(chunk, "web", None)
-                    if web and getattr(web, "uri", None):
-                        title = getattr(web, "title", "") or ""
-                        grounding_urls.append(f"[검증된 URL] 제목: {title} | URL: {web.uri}")
-        except Exception as e:
-            print(f"  ⚠️ grounding metadata 추출 실패: {e}")
-
-        if grounding_urls:
-            url_section = "\n".join(grounding_urls)
-            result_text += f"\n\n━━━ Google Search 검증된 URL 목록 ━━━\n{url_section}"
-            print(f"  📎 검증된 URL {len(grounding_urls)}개 추출")
-
-        return result_text
-    except Exception as e:
-        print(f"  ⚠️ Gemini 검색 오류: {e}")
-        return "(검색 결과 없음)"
+    result = claude_cli(search_prompt, model="sonnet", web_search=True, timeout=180)
+    return result or "(검색 결과 없음)"
 
 
-def fetch_content(client: anthropic.Anthropic, category: str, *, target_version: str | None = None) -> dict | None:
-    """2단계: ① DuckDuckGo 웹검색 → ② Claude로 메타데이터 + 본문 생성."""
+def fetch_content(category: str, *, target_version: str | None = None) -> dict | None:
+    """2단계: ① Claude CLI 웹검색 → ② Claude CLI로 메타데이터 + 본문 생성."""
     ver_label = f" (UE {target_version})" if target_version else ""
     print(f"  🔍 웹 검색 중 ({category}{ver_label})...")
     try:
-        # ── STEP 1: Gemini 3.1 Pro + Google Search ──
-        ver_q = f" UE {target_version}" if target_version else " UE5"
+        # ── STEP 1: Claude CLI + WebSearch ──
         today_str = date.today().strftime("%Y-%m-%d")
-        # 최근 3일 범위 (주말에도 콘텐츠 확보)
         three_days_ago = (date.today() - timedelta(days=3)).strftime("%Y-%m-%d")
         date_range = f"after:{three_days_ago}"
 
@@ -448,57 +396,43 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
             f"site:80.lv OR site:reddit.com/r/unrealengine unreal animation {date_range}",
         ]
 
-        # AI 기술 관련 쿼리 (모든 카테고리에 추가)
         ai_queries = [
             f"AI animation game development machine learning {date_range}",
             f"neural animation UE5 ML Deformer AI motion synthesis {date_range}",
             f"AI procedural animation diffusion model NeRF game {date_range}",
         ]
 
-        # GitHub 관련 쿼리
         github_queries = [
             f"site:github.com unreal engine animation plugin {date_range}",
             f"github UE5 animation AI machine learning new release {date_range}",
         ]
 
-        # AI/GitHub 카테고리면 해당 쿼리를 우선, 아니면 기본+보조로
         if category == "AI Animation Tech":
             queries = ai_queries + base_queries[:2]
         elif category == "GitHub/Open Source":
             queries = github_queries + base_queries[:2]
         else:
             queries = base_queries + [ai_queries[0], github_queries[0]]
-        raw_research = _gemini_search(queries)
+        raw_research = _web_search(queries)
         print(f"  📄 수집 완료 ({len(raw_research)}자)")
 
-        # ── STEP 2: 수집 결과로 메타데이터 JSON 추출 ──
-        meta_response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": _build_meta_prompt(category, raw_research)}],
-        )
-        meta_text = "".join(
-            block.text for block in meta_response.content
-            if hasattr(block, "text") and block.text
+        # ── STEP 2: 메타데이터 JSON 추출 ──
+        meta_text = claude_cli(
+            _build_meta_prompt(category, raw_research),
+            model="sonnet", timeout=60,
         )
         meta = _extract_json(meta_text) or {}
 
-        # 신규 정보가 없으면 스킵 (빈 dict 반환으로 에러와 구분)
         if not meta.get("새_정보_여부", True):
             print(f"  ℹ️ {category}: 최근 3일 내 신규 정보 없음 — 스킵")
             return {}
 
         print(f"  📋 메타데이터: {meta.get('제목', category)[:50]}...")
 
-        # ── STEP 3: 수집 결과로 Notion 본문 마크다운 생성 ──
-        body_response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=16000,
-            messages=[{"role": "user", "content": _build_body_prompt(category, raw_research, target_version)}],
-        )
-        body_markdown = "".join(
-            block.text for block in body_response.content
-            if hasattr(block, "text") and block.text
+        # ── STEP 3: Notion 본문 마크다운 생성 ──
+        body_markdown = claude_cli(
+            _build_body_prompt(category, raw_research, target_version),
+            model="sonnet", timeout=180,
         )
         print(f"  📝 본문 생성 ({len(body_markdown)}자)")
 
@@ -513,9 +447,6 @@ def fetch_content(client: anthropic.Anthropic, category: str, *, target_version:
             "본문_마크다운": body_markdown,
         }
 
-    except anthropic.APIStatusError as e:
-        print(f"  ❌ API 오류 ({category}): {e.status_code} — {e.message}")
-        return None
     except Exception as e:
         print(f"  ❌ 수집 오류 ({category}): {e}")
         return None
@@ -1194,12 +1125,8 @@ def run_briefing(categories: list[str], *, force: bool = False, per_version: boo
     if not NOTION_API_KEY:
         print("❌ NOTION_API_KEY 환경변수가 없습니다.")
         sys.exit(1)
-    if not ANTHROPIC_API_KEY:
-        print("❌ ANTHROPIC_API_KEY 환경변수가 없습니다.")
-        sys.exit(1)
 
-    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    notion_client    = Client(auth=NOTION_API_KEY)
+    notion_client = Client(auth=NOTION_API_KEY)
 
     # 버전별 분리 모드: 각 카테고리 × 각 버전
     if per_version:
@@ -1249,7 +1176,7 @@ def run_briefing(categories: list[str], *, force: bool = False, per_version: boo
         # 콘텐츠 수집 (최대 1회 재시도)
         data = None
         for attempt in range(2):
-            data = fetch_content(anthropic_client, category, target_version=version)
+            data = fetch_content(category, target_version=version)
             if data is not None:
                 break
             if attempt < 1:

@@ -6,21 +6,23 @@
 
 import asyncio
 import logging
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from github import Github, GithubException
-from google import genai
-from google.genai import types
+
+# shared_config에서 Claude CLI 유틸리티 로드
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_config import claude_cli
 
 from config import (
     CHECKIN_PROMPT,
     CONSOLIDATION_PROMPT,
-    GEMINI_API_KEY,
     GITHUB_REPO,
     GITHUB_TOKEN,
     KST,
     MEMORY_PATH,
-    MODEL_FLASH,
     SEGMENT_SUMMARY_PROMPT,
     SUMMARY_PROMPT,
 )
@@ -28,8 +30,6 @@ from context_loader import load_recent_summaries
 from database import Message, get_today_messages
 
 log = logging.getLogger(__name__)
-
-_gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def _format_conversation(messages: list[Message]) -> str:
@@ -42,7 +42,7 @@ def _format_conversation(messages: list[Message]) -> str:
 
 
 async def summarize_messages(messages: list[Message]) -> str | None:
-    """대화를 Gemini Flash로 요약한다."""
+    """대화를 Claude CLI로 요약한다."""
     if not messages:
         return None
 
@@ -50,16 +50,10 @@ async def summarize_messages(messages: list[Message]) -> str | None:
     prompt = f"{SUMMARY_PROMPT}\n\n---\n\n{conversation_text}"
 
     try:
-        response = await asyncio.to_thread(
-            _gemini.models.generate_content,
-            model=MODEL_FLASH,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=1024,
-            ),
+        result = await asyncio.to_thread(
+            claude_cli, prompt, model="sonnet", timeout=60,
         )
-        return response.text
+        return result or None
     except Exception as e:
         log.error("요약 생성 실패: %s", e)
         return None
@@ -133,7 +127,6 @@ def update_memory_index(target_date: datetime, summary_title: str) -> bool:
             index_file = repo.get_contents(index_path)
             current_content = index_file.decoded_content.decode("utf-8")
 
-            # 이미 해당 날짜 항목이 있으면 스킵
             if date_str in current_content:
                 log.info("MEMORY.md에 %s 항목이 이미 존재합니다.", date_str)
                 return True
@@ -167,16 +160,10 @@ async def summarize_segment(messages: list[Message]) -> str | None:
     prompt = f"{SEGMENT_SUMMARY_PROMPT}\n\n---\n\n{conversation_text}"
 
     try:
-        response = await asyncio.to_thread(
-            _gemini.models.generate_content,
-            model=MODEL_FLASH,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=256,
-            ),
+        result = await asyncio.to_thread(
+            claude_cli, prompt, model="sonnet", timeout=60,
         )
-        return response.text
+        return result or None
     except Exception as e:
         log.error("세그먼트 요약 실패: %s", e)
         return None
@@ -191,20 +178,12 @@ async def run_weekly_consolidation(chat_id: int) -> list[dict] | None:
     prompt = f"{CONSOLIDATION_PROMPT}\n\n---\n\n{summaries}"
 
     try:
-        response = await asyncio.to_thread(
-            _gemini.models.generate_content,
-            model=MODEL_FLASH,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=512,
-            ),
+        result_text = await asyncio.to_thread(
+            claude_cli, prompt, model="sonnet", timeout=60,
         )
-        result_text = response.text
         if not result_text or "변화 없음" in result_text:
             return None
 
-        # 결과를 파싱하여 category/content 쌍으로 반환
         entries = []
         for line in result_text.strip().split("\n"):
             line = line.strip("- ")
@@ -230,16 +209,9 @@ async def generate_checkin_message() -> str | None:
     prompt = f"{CHECKIN_PROMPT}\n\n---\n\n{summaries}"
 
     try:
-        response = await asyncio.to_thread(
-            _gemini.models.generate_content,
-            model=MODEL_FLASH,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.9,
-                max_output_tokens=256,
-            ),
+        result = await asyncio.to_thread(
+            claude_cli, prompt, model="sonnet", timeout=60,
         )
-        result = response.text
         if result and result.strip().upper() != "SKIP":
             return result.strip()
         return None
@@ -254,7 +226,6 @@ async def run_daily_summary(chat_id: int) -> None:
     date_str = now.strftime("%Y-%m-%d")
     log.info("일일 요약 시작: %s", date_str)
 
-    # 1. 오늘 대화 조회
     messages = await get_today_messages(chat_id)
     if not messages:
         log.info("오늘 대화가 없어 요약을 건너뜁니다.")
@@ -263,16 +234,13 @@ async def run_daily_summary(chat_id: int) -> None:
     user_messages = [m for m in messages if m.role == "user"]
     log.info("오늘 대화 %d건 (사용자 %d건)", len(messages), len(user_messages))
 
-    # 2. 요약 생성
     summary = await summarize_messages(messages)
     if not summary:
         log.warning("요약 생성 실패, push를 건너뜁니다.")
         return
 
-    # 3. 마크다운 생성
     markdown = create_memory_markdown(now, summary)
 
-    # 4. GitHub push
     file_path = f"{MEMORY_PATH}/chat_{date_str}.md"
     commit_msg = f"docs: 수다봇 대화 요약 ({date_str})"
     pushed = push_to_github(file_path, markdown, commit_msg)
@@ -281,7 +249,6 @@ async def run_daily_summary(chat_id: int) -> None:
         log.warning("GitHub push 실패")
         return
 
-    # 5. MEMORY.md 인덱스 업데이트
     summary_first_line = summary.split("\n")[0][:80]
     update_memory_index(now, summary_first_line)
 

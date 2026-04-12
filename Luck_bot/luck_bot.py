@@ -2,20 +2,24 @@
 텔레그램 챗봇 — 나의 운세 / Sanjuk_Luck_bot
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 사주 원국(壬寅일 戊申시) 기반 운세 상담 봇.
-- 정기 브리핑 (일간/주간/월간): Claude Sonnet 4.6
-- 대화형 채팅: Gemini 3 Flash (무료)
+- 정기 브리핑 (일간/주간/월간): Claude CLI (Sonnet)
+- 대화형 채팅: Claude CLI (Sonnet)
+API 비용 $0.
 
 환경변수:
-  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY, ANTHROPIC_API_KEY
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 """
 
 import os
 import asyncio
 import logging
+import sys
 from datetime import datetime, timezone, timedelta, time as dt_time
+from pathlib import Path
 
-import anthropic
-from google import genai
+# shared_config에서 Claude CLI 유틸리티 로드
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_config import claude_cli
 
 from saju_calendar import get_daily_analysis, get_week_analysis
 
@@ -33,8 +37,6 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0"))
 KST = timezone(timedelta(hours=9))
 
-gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-claude_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -204,29 +206,18 @@ def get_month_context() -> str:
     )
 
 
-# ─── Claude Sonnet API (정기 브리핑용) ────────────────────
-def _ask_claude_sync(prompt: str) -> str:
-    """Claude Sonnet 동기 호출 (내부용)."""
-    try:
-        response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        log.error(f"Claude API 오류: {e}")
-        return f"운세 생성 중 오류가 발생했습니다: {e}"
-
-
+# ─── Claude CLI (정기 브리핑용) ────────────────────────────
 async def ask_claude(prompt: str) -> str:
-    """Claude Sonnet 비동기 래핑 — 이벤트 루프 차단 방지."""
-    return await asyncio.to_thread(_ask_claude_sync, prompt)
+    """Claude CLI 비동기 래핑 — 이벤트 루프 차단 방지."""
+    result = await asyncio.to_thread(
+        claude_cli, prompt, model="sonnet", timeout=120,
+    )
+    return result or "운세 생성 중 오류가 발생했습니다."
 
 
-# ─── Gemini API (대화형 채팅용) ───────────────────────────
-def _ask_gemini_sync(chat_id: int, user_message: str) -> str:
-    """Gemini 3 Flash 동기 호출 (내부용)."""
+# ─── Claude CLI (대화형 채팅용) ───────────────────────────
+def _ask_chat_sync(chat_id: int, user_message: str) -> str:
+    """Claude CLI 동기 호출 (내부용)."""
     history = chat_history.get(chat_id, [])
     history.append(f"사용자: {user_message}")
     if len(history) > MAX_HISTORY:
@@ -238,19 +229,19 @@ def _ask_gemini_sync(chat_id: int, user_message: str) -> str:
     daily_analysis = get_daily_analysis(now.date())
 
     context = "\n".join(history)
-    user_prompt = (
-        f"{SYSTEM_PROMPT}{month_context}{date_info}\n\n"
+    prompt = (
+        f"{month_context}{date_info}\n\n"
         f"━━━ 오늘의 일진 ━━━\n{daily_analysis}\n━━━━━━━━━━━━━━━\n\n"
         f"대화 기록:\n{context}\n\n"
         f"위 대화의 마지막 사용자 메시지에 답변해주세요. 일진 데이터를 참고하여 답변하세요."
     )
 
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_prompt,
+        assistant_msg = claude_cli(
+            prompt, model="sonnet",
+            system_prompt=SYSTEM_PROMPT,
+            timeout=60,
         )
-        assistant_msg = response.text.strip()
         if not assistant_msg:
             return "응답을 받지 못했습니다. 다시 시도해주세요."
 
@@ -259,13 +250,13 @@ def _ask_gemini_sync(chat_id: int, user_message: str) -> str:
         return assistant_msg
 
     except Exception as e:
-        log.error(f"Gemini API 오류: {e}")
+        log.error(f"Claude CLI 오류: {e}")
         return f"오류가 발생했습니다: {e}"
 
 
-async def ask_gemini(chat_id: int, user_message: str) -> str:
-    """Gemini 3 Flash 비동기 래핑."""
-    return await asyncio.to_thread(_ask_gemini_sync, chat_id, user_message)
+async def ask_chat(chat_id: int, user_message: str) -> str:
+    """Claude CLI 비동기 래핑."""
+    return await asyncio.to_thread(_ask_chat_sync, chat_id, user_message)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -468,11 +459,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "🔮 나의 운세 봇입니다!\n\n"
         "사주 원국(壬寅일 戊申시) 기반으로 운세 상담을 해드립니다.\n\n"
-        "📨 정기 브리핑 (Claude Sonnet 4.6)\n"
+        "📨 정기 브리핑 (Claude CLI)\n"
         "  • ☀️ 일간 운세 — 매일 08:00\n"
         "  • 📅 주간 운세 — 매주 월요일 08:00\n"
         "  • 🌙 월간 운세 — 매월 1일 08:00\n\n"
-        "💬 자유 대화 (Gemini 3 Flash)\n"
+        "💬 자유 대화 (Claude CLI)\n"
         "  아무 질문이나 보내주세요!\n\n"
         "명령어:\n"
         "/fortune — ☀️ 오늘의 운세\n"
@@ -548,7 +539,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     log.info(f"[{chat_id}] 수신: {user_text[:50]}")
 
     await update.message.chat.send_action("typing")
-    reply = await ask_gemini(chat_id, user_text)
+    reply = await ask_chat(chat_id, user_text)
 
     if len(reply) > 4000:
         for i in range(0, len(reply), 4000):
@@ -566,7 +557,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def main() -> None:
     now = datetime.now(KST)
     log.info(f"🔮 나의 운세 봇 시작 — {now.strftime('%Y-%m-%d %H:%M:%S KST')}")
-    log.info("브리핑: Claude Sonnet 4.6 | 채팅: Gemini 3 Flash")
+    log.info("브리핑 + 채팅: Claude CLI (API 비용 $0)")
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
