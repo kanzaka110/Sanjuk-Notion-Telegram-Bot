@@ -13,3 +13,4 @@
 - [New PC Setup Guide](reference_new_pc_setup.md) — 새 PC 셋업 전체 절차 (클론, setup.sh, gcloud, SSH)
 - [Remote Triggers & Sessions](reference_remote_triggers.md) — 리모트 세션 4개 + 트리거 8개 (04-12 업데이트)
 - [GCP Memory Sync](feedback_gcp_memory_sync.md) — 메모리 변경 시 GCP 자동 푸시, 다중 환경 동기화
+- [GCP Execution](feedback_gcp_execution.md) — 봇 실행/테스트는 항상 GCP에서 (로컬은 편집/커밋만)

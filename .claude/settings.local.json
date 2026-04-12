@@ -9,7 +9,17 @@
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -20 {}')",
       "Bash(cmd.exe:*)",
       "Skill(update-config)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(gcloud compute ssh sanjuk-project:*)",
+      "Bash(gcloud compute ssh kanzaka110@sanjuk-project:*)",
+      "Bash(git pull:*)",
+      "Bash(grep -E \"\\\\.md$|\\\\.txt$\")",
+      "Bash(xargs grep:*)",
+      "Bash(ls *.md)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(find:*)"
     ]
   },
   "hooks": {
