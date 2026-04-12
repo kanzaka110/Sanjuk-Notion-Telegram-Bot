@@ -13,13 +13,15 @@
       "Bash(gcloud compute ssh sanjuk-project:*)",
       "Bash(gcloud compute ssh kanzaka110@sanjuk-project:*)",
       "Bash(git pull:*)",
-      "Bash(grep -E \"\\\\.md$|\\\\.txt$\")",
+      "Bash(git stash:*)",
+      "Bash(grep -E \"\\.md$|\\.txt$\")",
       "Bash(xargs grep:*)",
       "Bash(ls *.md)",
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
       "Bash(git push:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git commit:*)"
     ]
   },
   "hooks": {
