@@ -1,12 +1,12 @@
 #!/bin/bash
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# GCP Health Check — 봇 4개 + 시스템 상태 점검
+# GCP Health Check — 봇 3개 + 시스템 상태 점검
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 사용법:
 #   로컬: gcloud compute ssh sanjuk-project --zone=us-central1-b < scripts/gcp-doctor.sh
 #   GCP:  bash ~/Sanjuk-Notion-Telegram-Bot/scripts/gcp-doctor.sh
 
-SERVICES=("chatbot" "ue-bot" "game-news-bot" "luck-bot")
+SERVICES=("chatbot" "game-news-bot" "luck-bot")
 REPO_DIR="$HOME/Sanjuk-Notion-Telegram-Bot"
 PASS="[OK]"
 FAIL="[FAIL]"
@@ -62,7 +62,6 @@ echo "[3/5] .env 파일 확인"
 declare -A ENV_PATHS=(
     ["chatbot"]="$REPO_DIR/Chat_bot/.env"
     ["luck-bot"]="$REPO_DIR/Luck_bot/.env"
-    ["ue-bot"]="$REPO_DIR/.env"
     ["game-news-bot"]="$REPO_DIR/.env"
 )
 
