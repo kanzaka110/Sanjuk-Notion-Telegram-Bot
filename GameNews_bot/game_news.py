@@ -64,7 +64,7 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 - 제목과 URL이 반드시 같은 기사를 가리켜야 합니다. 제목은 A기사인데 URL은 B기사인 경우가 없도록 하세요.
 - 오늘({today}) 게시된 기사가 아니면 제외하세요."""
 
-    result = claude_cli(gather_prompt, model="opus", web_search=True, timeout=300, effort="max")
+    result = claude_cli(gather_prompt, model="opus", web_search=True, timeout=600, effort="max")
     return result or "(검색 결과 없음)"
 
 
