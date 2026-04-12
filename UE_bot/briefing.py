@@ -374,7 +374,7 @@ def _web_search(queries: list[str]) -> str:
 최근 3일 내 올라온 콘텐츠를 우선으로 찾아주세요.
 검색 결과에서 확인된 실제 URL만 포함하세요."""
 
-    result = claude_cli(search_prompt, model="sonnet", web_search=True, timeout=180)
+    result = claude_cli(search_prompt, model="opus", web_search=True, timeout=300, effort="max")
     return result or "(검색 결과 없음)"
 
 
@@ -419,7 +419,7 @@ def fetch_content(category: str, *, target_version: str | None = None) -> dict |
         # ── STEP 2: 메타데이터 JSON 추출 ──
         meta_text = claude_cli(
             _build_meta_prompt(category, raw_research),
-            model="sonnet", timeout=60,
+            model="opus", timeout=120, effort="max",
         )
         meta = _extract_json(meta_text) or {}
 
@@ -432,7 +432,7 @@ def fetch_content(category: str, *, target_version: str | None = None) -> dict |
         # ── STEP 3: Notion 본문 마크다운 생성 ──
         body_markdown = claude_cli(
             _build_body_prompt(category, raw_research, target_version),
-            model="sonnet", timeout=180,
+            model="opus", timeout=300, effort="max",
         )
         print(f"  📝 본문 생성 ({len(body_markdown)}자)")
 

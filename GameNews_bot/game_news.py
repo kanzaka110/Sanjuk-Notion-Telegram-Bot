@@ -64,7 +64,7 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 - 제목과 URL이 반드시 같은 기사를 가리켜야 합니다. 제목은 A기사인데 URL은 B기사인 경우가 없도록 하세요.
 - 오늘({today}) 게시된 기사가 아니면 제외하세요."""
 
-    result = claude_cli(gather_prompt, model="sonnet", web_search=True, timeout=180)
+    result = claude_cli(gather_prompt, model="opus", web_search=True, timeout=300, effort="max")
     return result or "(검색 결과 없음)"
 
 
@@ -111,7 +111,7 @@ def summarize_news(gathered_text: str) -> str:
 - URL이 없는 뉴스는 제외
 - 중복 제거"""
 
-    raw = claude_cli(prompt, model="sonnet", timeout=120)
+    raw = claude_cli(prompt, model="opus", timeout=180, effort="max")
     if not raw:
         return "뉴스 정리에 실패했습니다."
     # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프

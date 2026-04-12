@@ -68,6 +68,7 @@ def claude_cli(
     timeout: int = 120,
     web_search: bool = False,
     json_schema: str = "",
+    effort: str = "",
 ) -> str:
     """Claude CLI를 subprocess로 호출한다 (API 비용 $0).
 
@@ -78,6 +79,7 @@ def claude_cli(
         timeout: 타임아웃 (초)
         web_search: 웹 검색 도구 활성화
         json_schema: JSON 스키마 (구조화된 출력)
+        effort: 탐색 깊이 (low, medium, high, max)
 
     Returns:
         CLI 응답 텍스트. 실패 시 빈 문자열.
@@ -89,6 +91,8 @@ def claude_cli(
         cmd += ["--allowedTools", "WebSearch,WebFetch"]
     if json_schema:
         cmd += ["--json-schema", json_schema]
+    if effort:
+        cmd += ["--effort", effort]
 
     try:
         result = subprocess.run(
