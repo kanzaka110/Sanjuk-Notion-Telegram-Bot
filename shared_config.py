@@ -49,10 +49,6 @@ BOT_EXTRA_ENV: dict[str, list[EnvRequirement]] = {
         EnvRequirement("GITHUB_TOKEN", False, "GitHub 메모리 push용"),
         EnvRequirement("GITHUB_REPO", False, "GitHub 리포 경로"),
     ],
-    "UE_bot": [
-        EnvRequirement("NOTION_API_KEY", True, "Notion API 키"),
-        EnvRequirement("NOTION_DATABASE_ID", True, "Notion DB ID"),
-    ],
 }
 
 

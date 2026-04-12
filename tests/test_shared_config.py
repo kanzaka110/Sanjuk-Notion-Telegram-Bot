@@ -42,15 +42,9 @@ class TestEnvRequirements:
         assert "ANTHROPIC_API_KEY" not in keys
 
     def test_bots_have_extra_env(self) -> None:
-        """UE_bot과 Chat_bot이 추가 환경변수 정의."""
-        expected_bots = {"Chat_bot", "UE_bot"}
+        """Chat_bot만 추가 환경변수 정의."""
+        expected_bots = {"Chat_bot"}
         assert set(BOT_EXTRA_ENV.keys()) == expected_bots
-
-    def test_ue_bot_requires_notion(self) -> None:
-        """UE_bot은 Notion 키가 필수."""
-        keys = [r.key for r in BOT_EXTRA_ENV["UE_bot"]]
-        assert "NOTION_API_KEY" in keys
-        assert "NOTION_DATABASE_ID" in keys
 
 
 class TestValidateEnv:
