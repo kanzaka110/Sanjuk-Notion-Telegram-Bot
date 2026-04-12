@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_config import claude_cli
 
 # ─── 설정 ──────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_BOT_TOKEN = os.environ.get("GAME_NEWS_BOT_TOKEN", os.environ.get("TELEGRAM_BOT_TOKEN", ""))
 TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 KST = timezone(timedelta(hours=9))
 
