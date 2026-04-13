@@ -29,24 +29,26 @@ KST = timezone(timedelta(hours=9))
 # ─── 뉴스 수집 (Claude CLI + WebSearch) ─────────────────
 def fetch_news() -> str:
     """Claude CLI + WebSearch로 게임 뉴스 수집."""
-    today = datetime.now(KST).strftime("%Y년 %m월 %d일")
-    gather_prompt = f"""오늘({today}) 게임 관련 뉴스를 웹에서 검색하세요.
+    now = datetime.now(KST)
+    today = now.strftime("%Y년 %m월 %d일")
+    today_iso = now.strftime("%Y-%m-%d")
+    today_dot = now.strftime("%Y.%m.%d")
+    gather_prompt = f"""오늘은 {today} ({today_iso})입니다.
 
-⚠️ 중요: 반드시 오늘({today}) 게시된 기사만 수집하세요.
-어제 이전에 게시된 기사는 절대 포함하지 마세요.
-검색 결과에서 기사의 게시 날짜를 확인하고, 오늘 날짜가 아닌 기사는 제외하세요.
+반드시 오늘({today_iso}) 게시된 게임 뉴스만 검색하세요.
+어제({(now - timedelta(days=1)).strftime('%Y-%m-%d')}) 이전 기사는 절대 포함하지 마세요.
 
-다음 검색어들을 각각 검색하고, 오늘 게시된 기사만 나열해주세요:
+다음 검색어들을 각각 검색하세요. 검색 시 날짜를 포함하여 당일 기사만 찾으세요:
 
-검색어 1: "게임 뉴스 오늘" (한국어 뉴스)
-검색어 2: "넥슨 엔씨소프트 크래프톤 넷마블 뉴스"
-검색어 3: "gaming news today 2026"
-검색어 4: "Nintendo Sony Microsoft Xbox news"
-검색어 5: "신작 게임 출시 2026"
-검색어 6: "e스포츠 대회 결과"
-검색어 7: "Steam 인기 게임 신작"
-검색어 8: "시프트업 김형태 스텔라 블레이드" (시프트업 관련 뉴스)
-검색어 9: "SHIFT UP Stellar Blade Kim Hyung Tae"
+검색어 1: 게임 뉴스 {today_iso}
+검색어 2: 넥슨 엔씨소프트 크래프톤 넷마블 {today_dot}
+검색어 3: gaming news {today_iso}
+검색어 4: Nintendo Sony Microsoft Xbox news {today_iso}
+검색어 5: 신작 게임 출시 {today_dot}
+검색어 6: e스포츠 대회 결과 {today_dot}
+검색어 7: Steam 인기 게임 {today_dot}
+검색어 8: 시프트업 김형태 스텔라블레이드 {today_dot}
+검색어 9: SHIFT UP Stellar Blade {today_iso}
 
 각 검색 결과마다 반드시 아래 형식으로 작성하세요. 최소 15개 이상 기사를 나열해주세요:
 
@@ -54,15 +56,16 @@ def fetch_news() -> str:
 제목: [기사 제목 — 검색 결과에 나온 원본 제목 그대로]
 URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 출처: [매체명]
-게시일: [기사 게시 날짜]
+게시일: [기사 게시 날짜 — YYYY-MM-DD 형식]
 요약: [한 줄 요약]
 
 ---
 
 ⚠️ 필수 규칙:
-- URL은 반드시 실제 검색에서 나온 원본 링크여야 합니다. 절대로 URL을 생략하거나 만들어내지 마세요.
-- 제목과 URL이 반드시 같은 기사를 가리켜야 합니다. 제목은 A기사인데 URL은 B기사인 경우가 없도록 하세요.
-- 오늘({today}) 게시된 기사가 아니면 제외하세요."""
+- 게시일이 {today_iso}인 기사만 포함. 그 외 날짜는 전부 제외
+- 게시일을 확인할 수 없는 기사도 제외
+- URL은 반드시 실제 검색에서 나온 원본 링크. URL을 만들어내지 마세요
+- 제목과 URL이 반드시 같은 기사를 가리켜야 합니다"""
 
     result = claude_cli(gather_prompt, model="opus", web_search=True, timeout=600, effort="max")
     return result or "(검색 결과 없음)"
@@ -70,9 +73,12 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 
 # ─── Claude CLI로 정리 ──────────────────────────────────
 def summarize_news(gathered_text: str) -> str:
-    today = datetime.now(KST).strftime("%Y년 %m월 %d일")
+    now = datetime.now(KST)
+    today = now.strftime("%Y년 %m월 %d일")
+    today_iso = now.strftime("%Y-%m-%d")
 
-    prompt = f"""오늘({today}) 게임 뉴스를 아래 수집 결과를 바탕으로 정리해주세요.
+    prompt = f"""오늘은 {today} ({today_iso})입니다.
+아래 수집 결과에서 게시일이 {today_iso}인 기사만 골라서 정리해주세요.
 
 ━━━ 수집된 뉴스 ━━━
 {gathered_text}
@@ -87,27 +93,22 @@ def summarize_news(gathered_text: str) -> str:
 
 ▸ <a href="URL">기사 제목</a>
 
-▸ <a href="URL">기사 제목</a>
-
 🎮 게임
-
-▸ <a href="URL">기사 제목</a>
 
 ▸ <a href="URL">기사 제목</a>
 
 📌 한 줄 요약
 
 규칙:
-- 한국어, 게임회사/게임 카테고리는 최대 5개 (5개 미만이면 있는 만큼 모두 출력)
-- ⭐ 시프트업 섹션: 시프트업, 김형태 대표, 스텔라 블레이드 관련 기사를 별도로 모아서 표시. 해당 기사가 없으면 "오늘 관련 기사 없음"으로 표시
-- 수집된 기사가 1개라도 있으면 반드시 출력할 것. 갯수가 부족하다고 생략하지 말 것
+- 게시일이 {today_iso}인 기사만 포함. 어제 이전 기사는 전부 제외
+- 한국어, 게임회사/게임 카테고리는 최대 5개
+- ⭐ 시프트업 섹션: 시프트업, 김형태 대표, 스텔라 블레이드 관련 기사. 없으면 "오늘 관련 기사 없음"
+- 수집된 기사가 1개라도 있으면 반드시 출력. 생략하지 말 것
 - 제목만 한 줄로 (요약 불필요)
-- 각 기사 사이에 반드시 빈 줄 하나를 넣어서 간격을 줄 것
-- ⚠️ 오늘({today}) 게시된 기사만 포함. 어제 이전 기사는 반드시 제외
-- ⚠️ URL 규칙 (가장 중요):
+- 각 기사 사이에 반드시 빈 줄 하나
+- ⚠️ URL 규칙:
   - 수집 결과에 있는 URL만 사용할 것
-  - URL을 임의로 만들거나 추측하지 말 것
-  - URL을 수정하거나 다른 URL로 대체하지 말 것
+  - URL을 만들거나 추측하지 말 것
 - URL이 없는 뉴스는 제외
 - 중복 제거"""
 
