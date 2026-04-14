@@ -112,7 +112,7 @@ def summarize_news(gathered_text: str) -> str:
 - URL이 없는 뉴스는 제외
 - 중복 제거"""
 
-    raw = claude_cli(prompt, model="opus", timeout=180, effort="max")
+    raw = claude_cli(prompt, model="sonnet", timeout=300)
     if not raw:
         return "뉴스 정리에 실패했습니다."
     # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프
