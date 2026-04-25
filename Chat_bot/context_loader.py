@@ -141,13 +141,24 @@ def load_recent_summaries() -> str:
 
 
 def load_calendar_context() -> str:
-    """Google Calendar에서 오늘 일정을 로딩한다."""
+    """Google Calendar에서 오늘+이번 주 일정을 로딩한다."""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         from google_calendar import get_calendar_context
-        return get_calendar_context("today")
+        return get_calendar_context("week")
     except Exception as e:
         log.debug("캘린더 로딩 실패 (무시): %s", e)
+        return ""
+
+
+def load_gcp_context() -> str:
+    """GCP VM 시스템 상태를 로딩한다."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from gcp_status import get_gcp_context
+        return get_gcp_context()
+    except Exception as e:
+        log.debug("GCP 상태 로딩 실패 (무시): %s", e)
         return ""
 
 
@@ -164,8 +175,9 @@ def get_full_context() -> str:
     summaries = load_recent_summaries()
     md_docs = load_md_context()
     calendar = load_calendar_context()
+    gcp = load_gcp_context()
 
-    parts = [p for p in [memory, summaries, md_docs, calendar] if p]
+    parts = [p for p in [memory, summaries, calendar, gcp, md_docs] if p]
     _cached_context = "\n\n".join(parts) if parts else ""
     _cache_timestamp = now
 

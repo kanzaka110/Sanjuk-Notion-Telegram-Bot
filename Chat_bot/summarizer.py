@@ -201,12 +201,28 @@ async def run_weekly_consolidation(chat_id: int) -> list[dict] | None:
 
 
 async def generate_checkin_message() -> str | None:
-    """최근 대화 요약을 기반으로 선제적 연락 메시지를 생성한다."""
+    """최근 대화 요약 + 캘린더 일정을 기반으로 선제적 연락 메시지를 생성한다."""
     summaries = load_recent_summaries()
-    if not summaries:
+
+    # 캘린더 일정 로딩
+    calendar_ctx = ""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from google_calendar import get_calendar_context
+        calendar_ctx = get_calendar_context("today")
+    except Exception:
+        pass
+
+    context_parts = []
+    if summaries:
+        context_parts.append(f"[최근 대화 요약]\n{summaries}")
+    if calendar_ctx:
+        context_parts.append(f"\n{calendar_ctx}")
+
+    if not context_parts:
         return None
 
-    prompt = f"{CHECKIN_PROMPT}\n\n---\n\n{summaries}"
+    prompt = f"{CHECKIN_PROMPT}\n\n---\n\n" + "\n".join(context_parts)
 
     try:
         result = await asyncio.to_thread(
