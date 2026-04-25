@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_config import claude_cli
 
 from saju_calendar import get_daily_analysis, get_week_analysis
+from google_calendar import get_calendar_context
 
 from telegram import Update
 from telegram.ext import (
@@ -230,13 +231,16 @@ def _ask_chat_sync(chat_id: int, user_message: str) -> str:
     now = datetime.now(KST)
     date_info = f"\n현재: {now.strftime('%Y년 %m월 %d일 %A %H:%M')} KST"
     daily_analysis = get_daily_analysis(now.date())
+    cal_ctx = get_calendar_context("today")
+    cal_section = f"{cal_ctx}\n\n" if cal_ctx else ""
 
     context = "\n".join(history)
     prompt = (
         f"{month_context}{date_info}\n\n"
         f"━━━ 오늘의 일진 ━━━\n{daily_analysis}\n━━━━━━━━━━━━━━━\n\n"
+        f"{cal_section}"
         f"대화 기록:\n{context}\n\n"
-        f"위 대화의 마지막 사용자 메시지에 답변해주세요. 일진 데이터를 참고하여 답변하세요."
+        f"위 대화의 마지막 사용자 메시지에 답변해주세요. 일진 데이터와 오늘 일정을 참고하여 답변하세요."
     )
 
     try:
@@ -275,6 +279,9 @@ async def generate_daily_fortune() -> str:
     # 오늘의 일진 분석
     daily_analysis = get_daily_analysis(now.date())
 
+    # 오늘 캘린더 일정
+    cal_ctx = get_calendar_context("today")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {now.month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -286,9 +293,13 @@ async def generate_daily_fortune() -> str:
 {daily_analysis}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 오늘은 {now.year}년 {now.month}월 {now.day}일 {day_name}입니다.
 
 위 일진 데이터를 활용하여 오늘의 운세를 작성해주세요.
+Google Calendar 일정이 있으면, 각 일정에 맞춰 사주 관점의 조언을 덧붙여주세요.
+(예: 회의가 있으면 대인관계운과 연결, 마감이 있으면 업무운과 연결)
 
 ⚠️ 작성 규칙 (매우 중요):
 - 한자(漢字)를 절대 사용하지 마세요.
@@ -332,6 +343,9 @@ async def generate_weekly_fortune() -> str:
     # 이번 주 7일간 일진 흐름
     week_analysis = get_week_analysis(now.date())
 
+    # 이번 주 캘린더 일정
+    cal_ctx = get_calendar_context("week")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {now.month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -343,10 +357,13 @@ async def generate_weekly_fortune() -> str:
 {week_analysis}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 이번 주는 {week_start.month}월 {week_start.day}일 ~ {week_end.month}월 {week_end.day}일입니다.
 
 위 일진 데이터를 반드시 활용하여 주간 운세를 작성해주세요.
 각 요일의 십성·12운성·충합 관계를 근거로 요일별 강약을 분석해야 합니다.
+Google Calendar 일정이 있으면 요일별 운세에서 해당 일정과 사주 기운을 연결해 조언해주세요.
 
 첫 줄은 반드시 아래 타이틀로 시작:
 
@@ -377,6 +394,9 @@ async def generate_monthly_fortune() -> str:
     prev_data = MONTHLY_FORTUNE.get(month - 1 if month > 1 else 12, {})
     next_data = MONTHLY_FORTUNE.get(month + 1 if month < 12 else 1, {})
 
+    # 이번 달 캘린더 일정
+    cal_ctx = get_calendar_context("month")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -387,7 +407,11 @@ async def generate_monthly_fortune() -> str:
 다음달({next_data.get('간지', '')}월): {next_data.get('운세', '')}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 오늘은 {now.year}년 {month}월 1일, 새로운 달의 시작입니다.
+
+Google Calendar에 이번 달 일정이 있으면 주차별 운세에서 주요 일정과 사주 기운을 연결해 조언해주세요.
 
 아래 형식으로 이번 달 운세를 작성해주세요.
 첫 줄은 반드시 아래 타이틀로 시작:
