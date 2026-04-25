@@ -43,6 +43,7 @@ from focus_mode import start_focus, stop_focus, is_focus_active, queue_message, 
 from work_timer import start_work, stop_work, get_today_report as work_today_report, get_week_report as work_week_report
 from remote_exec import handle_exec
 from condition_tracker import log_condition, get_summary as condition_summary
+from intent_router import detect_intent_async, execute_intent
 
 from config import ALLOWED_CHAT_ID, KST, TELEGRAM_BOT_TOKEN
 from database import (
@@ -512,23 +513,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat_id = update.effective_chat.id
     user_text = update.message.text
 
-    # 0. 세그먼트 감지
+    # 0. 의도 감지 → 자동 실행
+    await update.message.chat.send_action("typing")
+    intent = await detect_intent_async(user_text)
+    if intent.get("intent") != "none":
+        action_result = await execute_intent(intent)
+        if action_result:
+            # 실행 결과를 저장하고 전송
+            await save_message(chat_id, "user", user_text, "cli")
+            await save_message(chat_id, "assistant", action_result, "cli")
+            await update.message.reply_text(action_result)
+            return
+
+    # 1. 세그먼트 감지
     await _check_and_save_segment(chat_id)
 
-    # 1. 사용자 메시지 저장
+    # 2. 사용자 메시지 저장
     await save_message(chat_id, "user", user_text, "cli")
 
-    # 2. 최근 대화 조회
+    # 3. 최근 대화 조회
     if context.user_data.get("clear_context"):
         recent = []
         context.user_data["clear_context"] = False
     else:
         recent = await get_recent_messages(chat_id, limit=20)
 
-    # 3. 코어 메모리 로딩 (context_loader에서 제공)
+    # 4. 코어 메모리 로딩 (context_loader에서 제공)
     core_ctx = get_full_context()
 
-    # 4. Claude CLI 응답 생성
+    # 5. Claude CLI 응답 생성
     answer, fallback_notice = await gemini.ask(
         user_text, recent,
         core_memory_context=core_ctx,
