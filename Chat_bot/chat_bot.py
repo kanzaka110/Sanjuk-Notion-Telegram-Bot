@@ -694,7 +694,7 @@ def main() -> None:
     )
 
     # 5분마다 미팅 사전 브리핑 체크
-    job_queue.run_repeating(
+    app.job_queue.run_repeating(
         lambda ctx: asyncio.ensure_future(
             meeting_check(ctx.bot, ALLOWED_CHAT_ID)
         ),
@@ -702,7 +702,7 @@ def main() -> None:
     )
 
     # 3분마다 봇 헬스 체크
-    job_queue.run_repeating(
+    app.job_queue.run_repeating(
         lambda ctx: asyncio.ensure_future(
             health_check_and_notify(ctx.bot, ALLOWED_CHAT_ID)
         ),
@@ -719,7 +719,7 @@ def main() -> None:
             if msg:
                 await ctx.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=msg)
 
-    job_queue.run_repeating(
+    app.job_queue.run_repeating(
         stock_check,
         interval=900, first=120, name="stock_alert",
     )
