@@ -35,6 +35,14 @@ from photo_handler import handle_photo_message
 from web_search import search_web_async
 from calendar_writer import parse_and_create_event
 from rag_memory import search_memory, store_memory, get_relevant_context, get_memory_stats
+from meeting_brief import check_and_notify as meeting_check
+from github_digest import get_github_digest
+from bot_health import health_check_and_notify
+from stock_alert import add_watch, remove_watch, get_watchlist, check_prices, format_alerts
+from focus_mode import start_focus, stop_focus, is_focus_active, queue_message, get_focus_status
+from work_timer import start_work, stop_work, get_today_report as work_today_report, get_week_report as work_week_report
+from remote_exec import handle_exec
+from condition_tracker import log_condition, get_summary as condition_summary
 
 from config import ALLOWED_CHAT_ID, KST, TELEGRAM_BOT_TOKEN
 from database import (
@@ -229,6 +237,101 @@ async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("일정 등록 실패. 다시 시도해줘.")
 
 
+async def cmd_focus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """집중 모드. /focus 90 또는 /focus off"""
+    if not _is_allowed(update):
+        return
+    arg = context.args[0] if context.args else "90"
+    if arg == "off":
+        await update.message.reply_text(stop_focus())
+    else:
+        try:
+            minutes = int(arg)
+            await update.message.reply_text(start_focus(minutes))
+        except ValueError:
+            await update.message.reply_text("사용법: /focus 90 또는 /focus off")
+
+
+async def cmd_work(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """작업 시작. /work 리타겟 작업"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text(work_today_report())
+        return
+    if text == "stop":
+        await update.message.reply_text(stop_work())
+    elif text == "week":
+        await update.message.reply_text(work_week_report())
+    else:
+        await update.message.reply_text(start_work(text))
+
+
+async def cmd_exec(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """원격 실행. /exec 운세봇 로그 확인"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /exec 운세봇 에러 로그 확인")
+        return
+    await update.message.chat.send_action("typing")
+    result = await handle_exec(text)
+    if len(result) > 4000:
+        result = result[:4000]
+    await update.message.reply_text(result)
+
+
+async def cmd_watch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """주식 감시. /watch 005930.KS 3"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    if not args:
+        items = get_watchlist()
+        if items:
+            lines = ["감시 종목:"] + [f"- {i['ticker']} ({i['threshold']}%)" for i in items]
+            await update.message.reply_text("\n".join(lines))
+        else:
+            await update.message.reply_text("감시 종목 없음. /watch 종목코드 등락률%")
+        return
+    ticker = args[0]
+    threshold = float(args[1]) if len(args) > 1 else 3.0
+    item = add_watch(ticker, threshold)
+    await update.message.reply_text(f"감시 추가: {item['ticker']} ({item['threshold']}%)")
+
+
+async def cmd_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """컨디션 기록. /condition 7 8 또는 /condition"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(condition_summary(30))
+        return
+    try:
+        sleep_h = float(args[0])
+        score = int(args[1]) if len(args) > 1 else 5
+        note = " ".join(args[2:]) if len(args) > 2 else ""
+        entry = log_condition(sleep_h, score, note)
+        await update.message.reply_text(f"기록: 수면 {entry['sleep']}h, 컨디션 {entry['score']}/10")
+    except (ValueError, IndexError):
+        await update.message.reply_text("사용법: /condition 수면시간 점수\n예: /condition 7 8")
+
+
+async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """온보딩 메모 저장 (RAG). /note P4 브랜치 따는 법: ..."""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /note 메모 내용")
+        return
+    store_memory(text, {"source": "manual_note", "category": "onboarding"})
+    await update.message.reply_text(f"메모 저장 완료 ({len(text)}자)")
+
+
 async def cmd_recall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """과거 대화 검색. /recall 투자 전략"""
     if not _is_allowed(update):
@@ -275,22 +378,29 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "비서봇 도움말\n\n"
         "-- 기본 --\n"
-        "/status - 상태\n"
-        "/clear - 대화 초기화\n"
-        "/refresh - 컨텍스트 새로고침\n\n"
+        "/status /clear /refresh\n\n"
         "-- 할일 --\n"
-        "/todo - 할일 목록\n"
-        "/add 내용 - 할일 추가\n"
-        "/done 번호 - 할일 완료\n\n"
+        "/todo /add 내용 /done 번호\n\n"
         "-- 지출 --\n"
-        "/spend 커피 5500 - 지출 기록\n"
-        "/expenses - 오늘 지출\n"
-        "/expenses month - 이번 달 지출\n\n"
+        "/spend 커피 5500 /expenses\n\n"
+        "-- 작업 --\n"
+        "/work 작업명 - 시작\n"
+        "/work stop - 종료\n"
+        "/work - 오늘 리포트\n"
+        "/work week - 주간 리포트\n\n"
+        "-- 집중 --\n"
+        "/focus 90 - 집중모드 시작\n"
+        "/focus off - 해제\n\n"
         "-- 도구 --\n"
         "/search 검색어 - 웹 검색\n"
         "/schedule 일정 - 캘린더 등록\n"
-        "/summary - 오늘 대화 요약\n"
-        "/recall 키워드 - 과거 대화 검색\n\n"
+        "/exec 명령 - GCP 원격 실행\n"
+        "/recall 키워드 - 과거 검색\n"
+        "/note 메모 - 지식 저장\n\n"
+        "-- 기록 --\n"
+        "/condition 수면h 점수 - 컨디션\n"
+        "/watch 종목 %  - 주가 감시\n"
+        "/summary - 대화 요약\n\n"
         "음성/사진도 지원!"
     )
 
@@ -538,6 +648,12 @@ def main() -> None:
     app.add_handler(CommandHandler("search", cmd_search))
     app.add_handler(CommandHandler("schedule", cmd_schedule))
     app.add_handler(CommandHandler("recall", cmd_recall))
+    app.add_handler(CommandHandler("focus", cmd_focus))
+    app.add_handler(CommandHandler("work", cmd_work))
+    app.add_handler(CommandHandler("exec", cmd_exec))
+    app.add_handler(CommandHandler("watch", cmd_watch))
+    app.add_handler(CommandHandler("condition", cmd_condition))
+    app.add_handler(CommandHandler("note", cmd_note))
 
     # 일반 메시지
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -577,7 +693,38 @@ def main() -> None:
         name="weekly_consolidation",
     )
 
-    log.info("산적 수다방 봇 시작! (Claude CLI)")
+    # 5분마다 미팅 사전 브리핑 체크
+    job_queue.run_repeating(
+        lambda ctx: asyncio.ensure_future(
+            meeting_check(ctx.bot, ALLOWED_CHAT_ID)
+        ),
+        interval=300, first=60, name="meeting_brief",
+    )
+
+    # 3분마다 봇 헬스 체크
+    job_queue.run_repeating(
+        lambda ctx: asyncio.ensure_future(
+            health_check_and_notify(ctx.bot, ALLOWED_CHAT_ID)
+        ),
+        interval=180, first=30, name="bot_health",
+    )
+
+    # 15분마다 주식 가격 체크 (평일 9-16시)
+    async def stock_check(ctx):
+        from datetime import datetime
+        now = datetime.now(KST)
+        if now.weekday() < 5 and 9 <= now.hour < 16:
+            alerts = check_prices()
+            msg = format_alerts(alerts)
+            if msg:
+                await ctx.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=msg)
+
+    job_queue.run_repeating(
+        stock_check,
+        interval=900, first=120, name="stock_alert",
+    )
+
+    log.info("비서봇 시작! (Claude CLI + 12개 모듈)")
     app.run_polling(drop_pending_updates=True)
 
 

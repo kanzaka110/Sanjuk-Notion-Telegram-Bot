@@ -241,6 +241,24 @@ async def generate_daily_digest() -> str | None:
     except Exception:
         pass
 
+    # GitHub 활동
+    try:
+        from github_digest import get_github_digest
+        gh = get_github_digest()
+        if gh:
+            parts.append(gh)
+    except Exception:
+        pass
+
+    # 작업 시간
+    try:
+        from work_timer import get_today_report
+        work = get_today_report()
+        if work and "없음" not in work:
+            parts.append(work)
+    except Exception:
+        pass
+
     # 대화 요약
     summaries = load_recent_summaries()
     if summaries:
