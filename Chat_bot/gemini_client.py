@@ -112,7 +112,21 @@ class GeminiClient:
             + "\n\n" + get_full_context()
         )
 
-        # 5. 대화 히스토리 + 현재 메시지를 프롬프트로 구성
+        # 5. RAG 관련 컨텍스트 로딩
+        rag_context = ""
+        try:
+            import sys
+            from pathlib import Path as _Path
+            sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+            from rag_memory import get_relevant_context
+            rag_context = get_relevant_context(user_message)
+        except Exception:
+            pass
+
+        if rag_context:
+            system_prompt += "\n\n" + rag_context
+
+        # 6. 대화 히스토리 + 현재 메시지를 프롬프트로 구성
         conversation = self._build_conversation_text(user_message, recent_messages)
         prompt = f"""아래는 최근 대화 기록이야. 마지막 승호의 말에 대답해줘.
 

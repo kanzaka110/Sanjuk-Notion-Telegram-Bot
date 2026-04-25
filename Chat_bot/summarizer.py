@@ -19,6 +19,7 @@ from shared_config import claude_cli
 from config import (
     CHECKIN_PROMPT,
     CONSOLIDATION_PROMPT,
+    DIGEST_PROMPT,
     GITHUB_REPO,
     GITHUB_TOKEN,
     KST,
@@ -200,6 +201,67 @@ async def run_weekly_consolidation(chat_id: int) -> list[dict] | None:
         return None
 
 
+async def generate_daily_digest() -> str | None:
+    """일일 다이제스트를 생성한다 (캘린더 + 할일 + GCP + 대화 요약)."""
+    parts = []
+
+    # 캘린더
+    try:
+        from google_calendar import get_calendar_context
+        cal = get_calendar_context("today")
+        if cal:
+            parts.append(cal)
+    except Exception:
+        pass
+
+    # 내일 캘린더
+    try:
+        from google_calendar import get_today_schedule
+        from datetime import datetime, timedelta
+        # 내일 일정은 get_calendar_context에 없으므로 별도 조회
+        parts.append("[내일 일정은 내일 아침 브리핑에서 확인]")
+    except Exception:
+        pass
+
+    # 할일
+    try:
+        from todo_manager import get_todo_context
+        todo = get_todo_context()
+        if todo:
+            parts.append(todo)
+    except Exception:
+        pass
+
+    # GCP 상태
+    try:
+        from gcp_status import get_gcp_context
+        gcp = get_gcp_context()
+        if gcp:
+            parts.append(gcp)
+    except Exception:
+        pass
+
+    # 대화 요약
+    summaries = load_recent_summaries()
+    if summaries:
+        parts.append(f"[오늘 대화]\n{summaries[:500]}")
+
+    if not parts:
+        return None
+
+    context = "\n\n".join(parts)
+    prompt = f"{DIGEST_PROMPT}\n\n---\n\n{context}"
+
+    try:
+        result = await asyncio.to_thread(
+            claude_cli, prompt, model="sonnet", timeout=60,
+        )
+        return result if result else None
+    except Exception as e:
+        log.error("다이제스트 생성 실패: %s", e)
+        return None
+
+
 async def generate_checkin_message() -> str | None:
     """최근 대화 요약 + 캘린더 일정을 기반으로 선제적 연락 메시지를 생성한다."""
     summaries = load_recent_summaries()
@@ -267,5 +329,13 @@ async def run_daily_summary(chat_id: int) -> None:
 
     summary_first_line = summary.split("\n")[0][:80]
     update_memory_index(now, summary_first_line)
+
+    # RAG 벡터 DB에도 저장
+    try:
+        from rag_memory import store_memory
+        store_memory(summary, {"source": "daily_summary", "date": date_str})
+        log.info("RAG 메모리 저장 완료")
+    except Exception as e:
+        log.debug("RAG 저장 실패 (무시): %s", e)
 
     log.info("일일 요약 완료: %s", date_str)

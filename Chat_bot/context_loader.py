@@ -151,6 +151,17 @@ def load_calendar_context() -> str:
         return ""
 
 
+def load_todo_context() -> str:
+    """할일 목록을 로딩한다."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from todo_manager import get_todo_context
+        return get_todo_context()
+    except Exception as e:
+        log.debug("할일 로딩 실패 (무시): %s", e)
+        return ""
+
+
 def load_gcp_context() -> str:
     """GCP VM 시스템 상태를 로딩한다."""
     try:
@@ -176,8 +187,9 @@ def get_full_context() -> str:
     md_docs = load_md_context()
     calendar = load_calendar_context()
     gcp = load_gcp_context()
+    todo = load_todo_context()
 
-    parts = [p for p in [memory, summaries, calendar, gcp, md_docs] if p]
+    parts = [p for p in [memory, summaries, calendar, gcp, todo, md_docs] if p]
     _cached_context = "\n\n".join(parts) if parts else ""
     _cache_timestamp = now
 
