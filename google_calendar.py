@@ -234,14 +234,26 @@ def get_calendar_context(scope: str = "today") -> str:
 
 def run_auth():
     """최초 OAuth2 인증을 수행하여 토큰을 저장한다 (헤드리스 서버 지원)."""
-    from google_auth_oauthlib.flow import InstalledAppFlow
+    import json as _json
+    from google_auth_oauthlib.flow import Flow
 
     if not os.path.exists(CLIENT_SECRET_PATH):
         print(f"OAuth 클라이언트 시크릿 파일이 필요합니다: {CLIENT_SECRET_PATH}")
         return
 
-    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
-    creds = flow.run_console()
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRET_PATH,
+        scopes=SCOPES,
+        redirect_uri="urn:ietf:wg:oauth:2.0:oob",
+    )
+    auth_url, _ = flow.authorization_url(prompt="consent")
+
+    print("\n아래 URL을 브라우저에서 열고 인증하세요:")
+    print(f"\n  {auth_url}\n")
+    code = input("인증 후 표시되는 코드를 붙여넣으세요: ").strip()
+
+    flow.fetch_token(code=code)
+    creds = flow.credentials
 
     with open(TOKEN_PATH, "w") as f:
         f.write(creds.to_json())
