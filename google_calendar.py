@@ -25,7 +25,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_PATH = os.path.join(_BASE_DIR, "client_secret.json")
 TOKEN_PATH = os.path.join(_BASE_DIR, "calendar_token.json")
 CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 _service = None
 
