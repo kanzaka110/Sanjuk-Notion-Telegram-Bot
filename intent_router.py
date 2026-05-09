@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from shared_config import claude_cli
+from claude_api import ask as claude_ask
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ INTENT_PROMPT = """사용자 메시지에서 실행 가능한 의도를 감지�
 
 가능한 의도:
 - schedule: 일정 등록 ("내일 3시 미팅 잡아줘", "다음주 화요일에 치과 예약")
+- schedule_update: 기존 일정 수정 ("부산행 SRT 시간 20시로 바꿔줘", "내일 미팅 15시로 변경")
+- schedule_delete: 일정 삭제 ("내일 치과 취소해줘", "SRT 일정 지워줘")
 - todo_add: 할일 추가 ("할일 추가해줘 보고서", "리타겟 작업 해야돼 메모해둬")
 - todo_done: 할일 완료 ("1번 할일 끝났어", "보고서 다 했어")
 - spend: 지출 기록 ("커피 5500원", "점심 12000원 썼어")
@@ -42,15 +44,28 @@ JSON으로만 답해. 다른 텍스트 금지:
 
 예시:
 - "내일 오후 3시에 팀 미팅" → {{"intent": "schedule", "params": "내일 오후 3시 팀 미팅"}}
+- "부산행 SRT 시간 20시로 변경해줘" → {{"intent": "schedule_update", "params": "부산행 SRT 시간 20시로 변경"}}
+- "내일 치과 취소해줘" → {{"intent": "schedule_delete", "params": "내일 치과"}}
 - "커피 5500" → {{"intent": "spend", "params": "커피 5500"}}
 - "요즘 날씨 어때?" → {{"intent": "none", "params": ""}}
-- "리타겟 작업 시작할게" → {{"intent": "work_start", "params": "리타겟 작업"}}"""
+- "리타겟 작업 시작할게" → {{"intent": "work_start", "params": "리타겟 작업"}}
+- "다음주 일정 체크해줘" → {{"intent": "none", "params": ""}}
+- "오늘 일정 뭐 있어?" → {{"intent": "none", "params": ""}}
+- "이번주 할일 보여줘" → {{"intent": "none", "params": ""}}
+- "지출 얼마 썼어?" → {{"intent": "none", "params": ""}}
+
+중요:
+- "수정해줘", "변경해줘", "바꿔줘" = schedule_update
+- "삭제해줘", "취소해줘", "지워줘" = schedule_delete
+- 새로 만드는 게 아니면 schedule 쓰지 마
+- **조회/확인/체크/보여줘/알려줘/뭐 있어?/얼마야?** 같은 질문/조회는 무조건 none. 캘린더·할일·지출은 시스템 컨텍스트에 이미 들어있으니 라우터가 처리할 필요 없음
+- 명령형(잡아/넣어/등록해/추가해/기록해)이 명확히 있을 때만 action 의도. 애매하면 none"""
 
 
 def detect_intent(message: str) -> dict:
     """메시지에서 의도를 감지한다."""
     prompt = INTENT_PROMPT.format(message=message[:300])
-    result = claude_cli(prompt, model="haiku", timeout=15)
+    result = claude_ask(prompt)
 
     if not result:
         return {"intent": "none", "params": ""}
@@ -84,6 +99,14 @@ async def execute_intent(intent: dict) -> str | None:
             if event:
                 return f"일정 등록 완료: {event['summary']}"
             return "일정 등록 실패했어. 다시 말해줘."
+
+        elif action == "schedule_update":
+            from calendar_writer import parse_and_update_event
+            return await asyncio.to_thread(parse_and_update_event, params)
+
+        elif action == "schedule_delete":
+            from calendar_writer import parse_and_delete_event
+            return await asyncio.to_thread(parse_and_delete_event, params)
 
         elif action == "todo_add":
             from todo_manager import add_todo

@@ -121,6 +121,22 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("대화 컨텍스트 초기화 완료.")
 
 
+async def cmd_deep(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Opus 4.7로 전환 — 깊이 있는 사고/분석용."""
+    if not _is_allowed(update):
+        return
+    _, msg = gemini.switch_to_pro()
+    await update.message.reply_text(msg)
+
+
+async def cmd_casual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sonnet 4.6 기본 모드로 복귀."""
+    if not _is_allowed(update):
+        return
+    msg = gemini.switch_to_flash()
+    await update.message.reply_text(msg)
+
+
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """수동으로 오늘 대화 요약을 실행한다."""
     if not _is_allowed(update):
@@ -406,29 +422,32 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-# ─── 멀티 버블 응답 ────────────────────────────────────
-def _split_into_bubbles(text: str) -> list[str]:
-    """응답을 2-3개 자연스러운 메시지 버블로 분리한다."""
-    text = text.strip()
+# ─── 단일/분할 응답 ────────────────────────────────────
+# Telegram 단일 메시지 한도(약 4096자) 안쪽이면 한 번에 보낸다.
+# 4096자 초과 시에만 안전하게 분할.
+TELEGRAM_MAX_LEN = 4000
 
-    if len(text) <= 100:
+
+def _split_into_bubbles(text: str) -> list[str]:
+    """응답을 단일 메시지로 보내되, 4000자 초과 시에만 안전하게 분할한다."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= TELEGRAM_MAX_LEN:
         return [text]
 
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    if 2 <= len(paragraphs) <= 4:
-        return paragraphs
-
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    if len(lines) >= 3:
-        chunk_size = max(1, len(lines) // 3)
-        bubbles = []
-        for i in range(0, len(lines), chunk_size):
-            chunk = "\n".join(lines[i : i + chunk_size])
-            if chunk:
-                bubbles.append(chunk)
-        return bubbles[:3]
-
-    return [text]
+    bubbles: list[str] = []
+    remaining = text
+    while len(remaining) > TELEGRAM_MAX_LEN:
+        # 가능한 줄바꿈 경계에서 자르기
+        split_at = remaining.rfind("\n", 0, TELEGRAM_MAX_LEN)
+        if split_at < TELEGRAM_MAX_LEN // 2:
+            split_at = TELEGRAM_MAX_LEN
+        bubbles.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+    if remaining:
+        bubbles.append(remaining)
+    return bubbles
 
 
 async def _send_bubbles(message, bubbles: list[str]) -> None:
@@ -515,15 +534,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # 0. 의도 감지 → 자동 실행
     await update.message.chat.send_action("typing")
+    action_context = ""
     intent = await detect_intent_async(user_text)
     if intent.get("intent") != "none":
         action_result = await execute_intent(intent)
         if action_result:
-            # 실행 결과를 저장하고 전송
-            await save_message(chat_id, "user", user_text, "cli")
-            await save_message(chat_id, "assistant", action_result, "cli")
-            await update.message.reply_text(action_result)
-            return
+            action_context = f"[시스템 실행 결과: {action_result}]"
 
     # 1. 세그먼트 감지
     await _check_and_save_segment(chat_id)
@@ -538,13 +554,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         recent = await get_recent_messages(chat_id, limit=20)
 
-    # 4. 코어 메모리 로딩 (context_loader에서 제공)
-    core_ctx = get_full_context()
+    # 4. Claude에 메시지 전달 (자동 실행 결과가 있으면 함께)
+    prompt = user_text
+    if action_context:
+        prompt = f"{user_text}\n\n{action_context}"
 
-    # 5. Claude CLI 응답 생성
     answer, fallback_notice = await gemini.ask(
-        user_text, recent,
-        core_memory_context=core_ctx,
+        prompt, recent,
     )
 
     # 5. 응답 저장
@@ -650,6 +666,8 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("clear", cmd_clear))
+    app.add_handler(CommandHandler("deep", cmd_deep))
+    app.add_handler(CommandHandler("casual", cmd_casual))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("help", cmd_help))

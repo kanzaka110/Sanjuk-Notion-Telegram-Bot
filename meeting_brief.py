@@ -19,33 +19,46 @@ _notified_events: set[str] = set()
 
 
 def get_upcoming_meetings(minutes_ahead: int = 35) -> list[dict]:
-    """30~35분 이내 시작하는 미팅을 반환한다."""
+    """30~35분 이내 시작하는 미팅을 모든 CALENDAR_SOURCES에서 가져온다."""
     try:
-        from google_calendar import _get_service
-        service = _get_service()
-        if not service:
-            return []
+        from google_calendar import CALENDAR_SOURCES, _get_service, _is_excluded
 
         now = datetime.now(KST)
         time_min = now + timedelta(minutes=25)
         time_max = now + timedelta(minutes=minutes_ahead)
 
-        result = service.events().list(
-            calendarId="primary",
-            timeMin=time_min.isoformat(),
-            timeMax=time_max.isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
-
         events = []
-        for ev in result.get("items", []):
-            if "dateTime" not in ev.get("start", {}):
-                continue  # 종일 이벤트 스킵
-            event_id = ev["id"]
-            if event_id in _notified_events:
+        seen_ids: set[str] = set()
+        for account, cid in CALENDAR_SOURCES:
+            service = _get_service(account)
+            if not service:
                 continue
-            events.append(ev)
+            try:
+                result = service.events().list(
+                    calendarId=cid,
+                    timeMin=time_min.isoformat(),
+                    timeMax=time_max.isoformat(),
+                    singleEvents=True,
+                    orderBy="startTime",
+                ).execute()
+            except Exception as e:
+                log.error("미팅 조회 실패 (%s/%s): %s", account, cid, e)
+                continue
+
+            for ev in result.get("items", []):
+                if "dateTime" not in ev.get("start", {}):
+                    continue
+                if _is_excluded(ev):
+                    continue
+                event_id = ev["id"]
+                if event_id in _notified_events or event_id in seen_ids:
+                    continue
+                seen_ids.add(event_id)
+                ev["_calendar_id"] = cid
+                ev["_account"] = account
+                events.append(ev)
+
+        events.sort(key=lambda e: e["start"].get("dateTime", ""))
         return events
 
     except Exception as e:
