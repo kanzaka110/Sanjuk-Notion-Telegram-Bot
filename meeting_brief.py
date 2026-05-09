@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 KST = timezone(timedelta(hours=9))
 
 _notified_events: set[str] = set()
+_notified_travel: set[str] = set()
 
 
 def get_upcoming_meetings(minutes_ahead: int = 35) -> list[dict]:
@@ -112,6 +113,68 @@ def generate_brief(event: dict) -> str:
     if result:
         _notified_events.add(event["id"])
     return result or f"[미팅 알림] {time_str} {summary}"
+
+
+def get_travel_alerts(window_min: int = 55, window_max: int = 65) -> list[dict]:
+    """위치 있는 이벤트 중 ~1시간 후 시작하는 것 (출발 알림 대상)."""
+    try:
+        from google_calendar import CALENDAR_SOURCES, _get_service, _is_excluded
+
+        now = datetime.now(KST)
+        time_min = now + timedelta(minutes=window_min)
+        time_max = now + timedelta(minutes=window_max)
+
+        events = []
+        seen_ids: set[str] = set()
+        for account, cid in CALENDAR_SOURCES:
+            service = _get_service(account)
+            if not service:
+                continue
+            try:
+                result = service.events().list(
+                    calendarId=cid,
+                    timeMin=time_min.isoformat(),
+                    timeMax=time_max.isoformat(),
+                    singleEvents=True,
+                    orderBy="startTime",
+                ).execute()
+            except Exception as e:
+                log.error("출발 알림 조회 실패 (%s/%s): %s", account, cid, e)
+                continue
+
+            for ev in result.get("items", []):
+                if "dateTime" not in ev.get("start", {}):
+                    continue
+                if _is_excluded(ev):
+                    continue
+                if not ev.get("location"):
+                    continue  # 위치 없는 이벤트는 출발 알림 대상 아님
+                event_id = ev["id"]
+                if event_id in _notified_travel or event_id in seen_ids:
+                    continue
+                seen_ids.add(event_id)
+                events.append(ev)
+        return events
+    except Exception as e:
+        log.error("출발 알림 조회 실패: %s", e)
+        return []
+
+
+def generate_travel_brief(event: dict) -> str:
+    """위치 기반 출발 알림 메시지."""
+    summary = event.get("summary", "(제목 없음)")
+    location = event.get("location", "")
+    start = event["start"].get("dateTime", "")
+    try:
+        start_dt = datetime.fromisoformat(start).astimezone(KST)
+        time_str = start_dt.strftime("%H:%M")
+    except Exception:
+        time_str = "?"
+    return (
+        f"[출발 알림] 약 1시간 뒤 {time_str} '{summary}'.\n"
+        f"위치: {location}\n"
+        f"이동시간 + 준비 챙기고 슬슬 나설 시간."
+    )
 
 
 async def check_and_notify(bot, chat_id: int):

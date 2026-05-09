@@ -205,8 +205,39 @@ def _format_event(event: dict) -> str:
     return parts[0]
 
 
+def _event_window(ev: dict) -> tuple[datetime, datetime] | None:
+    """이벤트 시작/종료를 KST tz-aware datetime으로 반환. dateTime만 대상 (종일 제외)."""
+    start = ev.get("start", {})
+    end = ev.get("end", {})
+    if "dateTime" not in start or "dateTime" not in end:
+        return None
+    s = datetime.fromisoformat(start["dateTime"]).astimezone(KST)
+    e = datetime.fromisoformat(end["dateTime"]).astimezone(KST)
+    return s, e
+
+
+def find_conflicts(events: list[dict]) -> list[tuple[dict, dict]]:
+    """겹치는 이벤트 쌍 리스트. 종일 이벤트는 제외."""
+    timed = []
+    for ev in events:
+        win = _event_window(ev)
+        if win:
+            timed.append((win, ev))
+    timed.sort(key=lambda x: x[0][0])
+
+    pairs: list[tuple[dict, dict]] = []
+    for i, ((a_s, a_e), a) in enumerate(timed):
+        for j in range(i + 1, len(timed)):
+            (b_s, b_e), b = timed[j]
+            if b_s >= a_e:
+                break
+            if a_s < b_e and b_s < a_e:
+                pairs.append((a, b))
+    return pairs
+
+
 def _format_day_events(date: datetime, events: list[dict]) -> str:
-    """특정 날짜의 이벤트를 포맷한다."""
+    """특정 날짜의 이벤트를 포맷한다. 시간 겹침 자동 감지."""
     weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
     day_name = weekday_kr[date.weekday()]
     header = f"{date.month}/{date.day}({day_name})"
@@ -225,9 +256,25 @@ def _format_day_events(date: datetime, events: list[dict]) -> str:
 
     if not day_events:
         return f"{header}: 일정 없음"
+
+    # 충돌 감지 — 같은 날 timed 이벤트들 사이
+    conflicts = find_conflicts(day_events)
+    conflict_ids = set()
+    for a, b in conflicts:
+        conflict_ids.add(a.get("id", ""))
+        conflict_ids.add(b.get("id", ""))
+
     lines = [header + ":"]
     for ev in day_events:
-        lines.append("  " + _format_event(ev))
+        formatted = _format_event(ev)
+        if ev.get("id", "") in conflict_ids:
+            # _format_event는 "- 09:00..."로 시작 → 충돌일 때 "⚠"로 교체
+            body = formatted[2:] if formatted.startswith("- ") else formatted
+            lines.append(f"  ⚠ {body}")
+        else:
+            lines.append("  " + formatted)
+    if conflicts:
+        lines.append(f"  ⚠ 시간 겹침 {len(conflicts)}건 — 우선순위 확인 필요")
     return "\n".join(lines)
 
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from claude_api import chat as claude_chat
+from claude_api import chat_with_tools
 
 from config import SYSTEM_PROMPT
 from context_loader import get_essential_context
@@ -25,6 +26,9 @@ SESSION_NAME = "chat_bot"
 
 SONNET_MODEL = "claude-sonnet-4-6"
 OPUS_MODEL = "claude-opus-4-7"
+
+# Tool use를 사용할지 — True면 Claude가 도구로 직접 캘린더/RAG/할일 조회
+USE_TOOLS = True
 
 
 class GeminiClient:
@@ -60,21 +64,53 @@ class GeminiClient:
         # 시스템 프롬프트
         system_prompt = SYSTEM_PROMPT
 
-        # 변동 컨텍스트 (캘린더, 할일)
-        essential = get_essential_context()
-        if essential:
-            system_prompt += f"\n\n[현재 상황]\n{essential}"
+        # tool use 모드: Claude가 필요할 때 도구 호출 → essential 컨텍스트 박을 필요 없음
+        # legacy 모드: 모든 컨텍스트를 시스템 프롬프트에 박음
+        if not USE_TOOLS:
+            essential = get_essential_context()
+            if essential:
+                system_prompt += f"\n\n[현재 상황]\n{essential}"
+            try:
+                from rag_memory import get_relevant_context
+                rag_ctx = await asyncio.to_thread(
+                    get_relevant_context, user_message, 800
+                )
+                if rag_ctx:
+                    system_prompt += f"\n\n[관련 과거 메모]\n{rag_ctx}"
+            except Exception as e:
+                log.debug("RAG 회상 스킵: %s", e)
+        else:
+            system_prompt += (
+                "\n\n## 사용 가능한 도구\n"
+                "- get_calendar(scope=today/week/month): 일정 조회\n"
+                "- find_calendar_conflicts(): 시간 겹침 일정 찾기\n"
+                "- search_memory(query): 과거 대화/메모 검색\n"
+                "- get_todos(): 미완료 할일\n"
+                "- web_search(query): 인터넷 검색\n"
+                "- get_gcp_status(): 봇/시스템 상태\n"
+                "사용자 질문에 정확히 답하려면 관련 도구를 능동적으로 호출해. "
+                "도구 결과로 답하고, 도구가 필요 없는 일상 대화는 그냥 답해."
+            )
 
         model = OPUS_MODEL if self._deep_mode else SONNET_MODEL
 
         try:
-            answer = await asyncio.to_thread(
-                claude_chat,
-                user_message,
-                session=SESSION_NAME,
-                model=model,
-                system=system_prompt,
-            )
+            if USE_TOOLS:
+                answer = await asyncio.to_thread(
+                    chat_with_tools,
+                    user_message,
+                    session=SESSION_NAME,
+                    model=model,
+                    system=system_prompt,
+                )
+            else:
+                answer = await asyncio.to_thread(
+                    claude_chat,
+                    user_message,
+                    session=SESSION_NAME,
+                    model=model,
+                    system=system_prompt,
+                )
 
             if not answer:
                 answer = "지금 응답 생성이 안 됐어. 잠시 후 다시 말해줘."

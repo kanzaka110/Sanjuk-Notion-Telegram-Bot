@@ -137,6 +137,17 @@ async def cmd_casual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(msg)
 
 
+async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """수동으로 모닝 브리핑 즉시 생성."""
+    if not _is_allowed(update):
+        return
+    await update.message.chat.send_action("typing")
+    text = await _build_morning_brief()
+    if text:
+        await update.message.reply_text(text)
+        await save_message(update.effective_chat.id, "assistant", text, "cli")
+
+
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """수동으로 오늘 대화 요약을 실행한다."""
     if not _is_allowed(update):
@@ -532,11 +543,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat_id = update.effective_chat.id
     user_text = update.message.text
 
-    # 0. 의도 감지 → 자동 실행
     await update.message.chat.send_action("typing")
     action_context = ""
+
+    # 0-pre. 직전 turn에 pending action 있으면 사용자 응답으로 confirm/deny 판정
+    pending = context.user_data.get("pending_action")
+    if pending:
+        if _is_confirm(user_text):
+            try:
+                action_result = await execute_intent(pending)
+            except Exception as e:
+                log.error("pending action 실행 실패: %s", e)
+                action_result = f"실행 실패: {e}"
+            context.user_data["pending_action"] = None
+            await save_message(chat_id, "user", user_text, "cli")
+            msg = action_result or "진행했어."
+            await update.message.reply_text(msg)
+            await save_message(chat_id, "assistant", msg, "cli")
+            return
+        if _is_deny(user_text):
+            context.user_data["pending_action"] = None
+            await save_message(chat_id, "user", user_text, "cli")
+            await update.message.reply_text("취소했어.")
+            await save_message(chat_id, "assistant", "취소했어.", "cli")
+            return
+        # confirm/deny가 아니면 pending 폐기하고 새 메시지로 처리
+        context.user_data["pending_action"] = None
+
+    # 0. 의도 감지
     intent = await detect_intent_async(user_text)
-    if intent.get("intent") != "none":
+    intent_name = intent.get("intent", "none")
+
+    # 0-post. 쓰기성 액션은 확인 단계 거침
+    if intent_name in _CONFIRM_ACTIONS:
+        context.user_data["pending_action"] = intent
+        confirm_msg = _format_confirm(intent)
+        await save_message(chat_id, "user", user_text, "cli")
+        await update.message.reply_text(confirm_msg)
+        await save_message(chat_id, "assistant", confirm_msg, "cli")
+        return
+
+    # 0-other. 읽기/유틸 의도(검색/메모 등)는 즉시 실행
+    if intent_name != "none":
         action_result = await execute_intent(intent)
         if action_result:
             action_context = f"[시스템 실행 결과: {action_result}]"
@@ -643,14 +691,139 @@ async def scheduled_consolidation(context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("주간 기억 통합 실패: %s", e)
 
 
+async def _build_morning_brief() -> str:
+    """모닝 브리핑 텍스트 생성. Claude로 자연스러운 톤 부여."""
+    from datetime import datetime
+    from google_calendar import get_today_schedule, get_week_schedule
+    from todo_manager import get_todo_context
+    from claude_api import chat as claude_chat
+
+    today_str = datetime.now(KST).strftime("%-m/%-d (%a)")
+    today_cal = get_today_schedule()
+    upcoming = get_week_schedule(days=3)
+    todos = get_todo_context() or "할일 없음"
+
+    raw = (
+        f"=== 모닝 브리핑 데이터 ({today_str}) ===\n\n"
+        f"[오늘 일정]\n{today_cal}\n\n"
+        f"[앞으로 3일 일정]\n{upcoming}\n\n"
+        f"[할일]\n{todos}"
+    )
+
+    prompt = (
+        "아래 데이터로 승호한테 보낼 모닝 브리핑을 만들어줘. "
+        "친구 비서 톤. 이모지 금지. 콜센터 말투 금지. "
+        "오늘 일정 우선 강조하고, 충돌(⚠) 있으면 먼저 지적. "
+        "3일 일정은 맥락만 짧게. 할일은 제일 우선순위 1~2개만 언급. "
+        "마지막은 실용적 한 마디(준비물/이동/컨디션 등). 한 메시지로 묶어서.\n\n"
+        f"{raw}"
+    )
+    try:
+        text = await asyncio.to_thread(
+            claude_chat,
+            prompt,
+            session="morning_brief",
+            system="너는 승호의 개인 비서. 간결하고 실용적으로.",
+            max_tokens=800,
+        )
+        return text or ""
+    except Exception as e:
+        log.error("모닝 브리핑 생성 실패: %s", e)
+        # 폴백 — Claude 실패 시 raw 데이터 그대로
+        return f"좋은 아침. {today_str} 브리핑.\n\n{raw}"
+
+
+async def scheduled_morning_brief(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 09:00 KST — 모닝 브리핑."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    log.info("모닝 브리핑 생성 시작")
+    try:
+        text = await _build_morning_brief()
+        if text:
+            await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=text)
+            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+            log.info("모닝 브리핑 전송 완료")
+    except Exception as e:
+        log.error("모닝 브리핑 실패: %s", e)
+
+
+async def scheduled_travel_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매 5분 — 위치 있는 이벤트 1시간 전 출발 알림."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from meeting_brief import get_travel_alerts, generate_travel_brief, _notified_travel
+        events = await asyncio.to_thread(get_travel_alerts)
+        for ev in events:
+            brief = generate_travel_brief(ev)
+            if brief:
+                await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=brief)
+                await save_message(ALLOWED_CHAT_ID, "assistant", brief, "cli")
+                _notified_travel.add(ev["id"])
+                log.info("출발 알림 전송: %s", ev.get("summary", ""))
+    except Exception as e:
+        log.error("출발 알림 실패: %s", e)
+
+
+# ─── 액션 확인 흐름 헬퍼 ────────────────────────────────
+_CONFIRM_PATTERNS = re.compile(
+    r"^\s*(ㅇㅇ+|응응?|어어?|네+|예|오케이|ok|okay|yes|y|좋아|"
+    r"맞아|맞|그래|그렇게|진행해?|해줘|진행|등록해|확정)\s*[.!~]?\s*$",
+    re.IGNORECASE,
+)
+_DENY_PATTERNS = re.compile(
+    r"^\s*(아니|아니야|취소|아냐|nope?|no|n|싫어|하지마|그만)\s*[.!~]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_confirm(text: str) -> bool:
+    return bool(_CONFIRM_PATTERNS.match(text))
+
+
+def _is_deny(text: str) -> bool:
+    return bool(_DENY_PATTERNS.match(text))
+
+
+_CONFIRM_ACTIONS = {"schedule", "schedule_update", "schedule_delete", "spend"}
+
+
+def _format_confirm(intent: dict) -> str:
+    """confirm 요청 메시지를 만든다."""
+    action = intent.get("intent", "")
+    params = intent.get("params", "")
+    if action == "schedule":
+        return f"등록할 일정 — {params}\n맞으면 'ㅇㅇ', 다르면 다시 말해줘."
+    if action == "schedule_update":
+        return f"수정할 일정 — {params}\n진행해도 돼?"
+    if action == "schedule_delete":
+        return f"삭제할 일정 — {params}\n정말 삭제? 'ㅇㅇ'면 진행."
+    if action == "spend":
+        return f"지출 기록 — {params}\n맞으면 'ㅇㅇ'."
+    return f"확인 필요 — {params}\n진행해도 돼?"
+
+
 # ─── 메인 ───────────────────────────────────────────────
 async def post_init(application) -> None:
-    """봇 시작 시 DB 초기화 + 컨텍스트 로딩."""
+    """봇 시작 시 DB 초기화 + 컨텍스트 로딩 + 대화 히스토리 복원."""
     await init_db()
     log.info("데이터베이스 초기화 완료")
     ctx = get_full_context()
     if ctx:
         log.info("사용자 컨텍스트 로딩 완료: %d자", len(ctx))
+
+    # 재시작 후에도 대화 연속성 유지 — DB에서 최근 40턴 복원
+    try:
+        if ALLOWED_CHAT_ID:
+            recent = await get_recent_messages(ALLOWED_CHAT_ID, limit=40)
+            if recent:
+                from claude_api import load_session_history
+                from gemini_client import SESSION_NAME
+                history = [{"role": m.role, "content": m.content} for m in recent]
+                load_session_history(SESSION_NAME, history)
+    except Exception as e:
+        log.warning("대화 히스토리 복원 실패: %s", e)
 
 
 def main() -> None:
@@ -668,6 +841,7 @@ def main() -> None:
     app.add_handler(CommandHandler("clear", cmd_clear))
     app.add_handler(CommandHandler("deep", cmd_deep))
     app.add_handler(CommandHandler("casual", cmd_casual))
+    app.add_handler(CommandHandler("brief", cmd_brief))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -694,6 +868,13 @@ def main() -> None:
 
     # 사진 메시지
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    # 매일 09:00 KST — 모닝 브리핑
+    app.job_queue.run_daily(
+        scheduled_morning_brief,
+        time=dt_time(hour=9, minute=0, tzinfo=KST),
+        name="morning_brief",
+    )
 
     # 매일 23:00 KST — 대화 요약 + GitHub push
     app.job_queue.run_daily(
@@ -730,6 +911,12 @@ def main() -> None:
             meeting_check(ctx.bot, ALLOWED_CHAT_ID)
         ),
         interval=300, first=60, name="meeting_brief",
+    )
+
+    # 5분마다 출발 알림 체크 (위치 있는 이벤트 1시간 전)
+    app.job_queue.run_repeating(
+        scheduled_travel_alerts,
+        interval=300, first=90, name="travel_alerts",
     )
 
     # 3분마다 봇 헬스 체크
