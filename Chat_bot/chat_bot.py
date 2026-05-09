@@ -160,6 +160,63 @@ async def cmd_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await save_message(update.effective_chat.id, "assistant", text, "cli")
 
 
+async def cmd_insights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """능동 통찰 즉시 표시."""
+    if not _is_allowed(update):
+        return
+    from proactive_insights import generate_insights
+    text = await asyncio.to_thread(generate_insights)
+    await update.message.reply_text(text or "특별한 통찰 없음 — 평온한 상태.")
+
+
+async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """음성 응답 모드 토글. /voice on /voice off."""
+    if not _is_allowed(update):
+        return
+    arg = " ".join(context.args).strip().lower() if context.args else ""
+    current = context.user_data.get("voice_reply", False)
+    if arg == "on":
+        context.user_data["voice_reply"] = True
+        await update.message.reply_text("음성 응답 ON. 모든 답변에 음성도 함께 전송.")
+    elif arg == "off":
+        context.user_data["voice_reply"] = False
+        await update.message.reply_text("음성 응답 OFF.")
+    else:
+        await update.message.reply_text(
+            f"현재 음성 응답: {'ON' if current else 'OFF'}\n"
+            f"사용법: /voice on  /voice off"
+        )
+
+
+async def cmd_automation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """자동화 규칙 관리. /automation list /automation delete <id>"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    sub = args[0].lower() if args else "list"
+    if sub == "list":
+        from automations import list_automations, format_rule_list
+        await update.message.reply_text(format_rule_list(list_automations()))
+        return
+    if sub == "delete" and len(args) >= 2:
+        from automations import delete_automation
+        ok = delete_automation(int(args[1]))
+        await update.message.reply_text("삭제 완료" if ok else "찾을 수 없음")
+        return
+    if sub == "toggle" and len(args) >= 3:
+        from automations import toggle_automation
+        ok = toggle_automation(int(args[1]), args[2].lower() in ("on", "true", "1"))
+        await update.message.reply_text("변경 완료" if ok else "찾을 수 없음")
+        return
+    await update.message.reply_text(
+        "사용법:\n"
+        "  /automation list\n"
+        "  /automation delete <id>\n"
+        "  /automation toggle <id> on|off\n"
+        "추가는 자연어로 봇한테 부탁: \"매일 오전 8:30에 좋은 아침 메시지 보내는 자동화 만들어줘\""
+    )
+
+
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """수동으로 오늘 대화 요약을 실행한다."""
     if not _is_allowed(update):
@@ -486,6 +543,25 @@ async def _send_bubbles(message, bubbles: list[str]) -> None:
             await asyncio.sleep(0.8)
 
 
+async def _maybe_send_tts(message, text: str, user_data: dict) -> None:
+    """voice_reply 모드 켜져있으면 응답을 TTS로도 전송."""
+    if not user_data.get("voice_reply"):
+        return
+    if not text or len(text) > 1500:
+        return
+    try:
+        from gtts import gTTS
+        import io
+        # 한국어 우선, 영어 섞이면 자연스럽지만 일단 ko 고정
+        tts = gTTS(text=text, lang="ko")
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        await message.reply_voice(voice=buf)
+    except Exception as e:
+        log.debug("TTS 발송 스킵: %s", e)
+
+
 # ─── 대화 세그먼트 감지 ────────────────────────────────
 SEGMENT_GAP_SECONDS = 1800  # 30분
 
@@ -543,6 +619,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     bubbles = _split_into_bubbles(answer)
     await _send_bubbles(update.message, bubbles)
+    await _maybe_send_tts(update.message, answer, context.user_data)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -628,9 +705,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # 5. 응답 저장
     await save_message(chat_id, "assistant", answer, "cli")
 
-    # 6. 멀티 버블 전송
+    # 6. 멀티 버블 전송 + TTS (음성 모드 켜져있으면)
     bubbles = _split_into_bubbles(answer)
     await _send_bubbles(update.message, bubbles)
+    await _maybe_send_tts(update.message, answer, context.user_data)
 
 
 # ─── 스케줄러 콜백 ──────────────────────────────────────
@@ -748,16 +826,22 @@ async def _build_morning_brief() -> str:
 
 
 async def scheduled_morning_brief(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """매일 09:00 KST — 모닝 브리핑."""
+    """매일 09:00 KST — 모닝 브리핑 (능동 통찰 포함)."""
     if ALLOWED_CHAT_ID == 0:
         return
     log.info("모닝 브리핑 생성 시작")
     try:
         text = await _build_morning_brief()
         if text:
-            await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=text)
-            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
-            log.info("모닝 브리핑 전송 완료")
+            # 능동 통찰 추가
+            from proactive_insights import generate_insights
+            insights = await asyncio.to_thread(generate_insights)
+            if insights:
+                text = text + "\n\n" + insights
+            sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, text)
+            if sent:
+                await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+                log.info("모닝 브리핑 전송 완료")
     except Exception as e:
         log.error("모닝 브리핑 실패: %s", e)
 
@@ -907,6 +991,95 @@ async def _build_weekly_preview() -> str:
         return f"다음주 미리보기.\n\n{raw}"
 
 
+def _is_in_active_meeting() -> bool:
+    """현재 시각이 캘린더의 timed 이벤트 중간이면 True (smart silence 판정용)."""
+    try:
+        from google_calendar import _fetch_events
+        from datetime import datetime, timedelta
+        now = datetime.now(KST)
+        events = _fetch_events(now - timedelta(hours=2), now + timedelta(hours=2))
+        for ev in events:
+            s = ev.get("start", {})
+            e = ev.get("end", {})
+            if "dateTime" not in s or "dateTime" not in e:
+                continue
+            from datetime import datetime as _dt
+            st = _dt.fromisoformat(s["dateTime"]).astimezone(KST)
+            en = _dt.fromisoformat(e["dateTime"]).astimezone(KST)
+            if st <= now < en:
+                return True
+    except Exception as e:
+        log.debug("미팅 상태 판정 실패: %s", e)
+    return False
+
+
+async def _send_or_queue(bot, chat_id: int, text: str) -> bool:
+    """미팅/포커스 중이면 큐에 쌓고, 아니면 즉시 발송. 반환값 = 발송 여부."""
+    from focus_mode import is_focus_active, queue_message
+    if is_focus_active() or _is_in_active_meeting():
+        try:
+            queue_message(text)
+        except Exception:
+            pass
+        log.info("smart silence — 알림 보류 (회의/포커스 중)")
+        return False
+    await bot.send_message(chat_id=chat_id, text=text)
+    return True
+
+
+async def scheduled_journal_prompt(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 22:30 KST — 오늘 어땠어? 짧게 묻기."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    msg = "오늘 어땠어? 한 줄이면 충분해."
+    sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, msg)
+    if sent:
+        await save_message(ALLOWED_CHAT_ID, "assistant", msg, "cli")
+
+
+async def scheduled_habit_prompt(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 21:00 KST — 오늘 안 한 기본 습관 1개씩만 묻기."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from habit_tracker import get_today_pending
+        pending = get_today_pending()
+        if not pending:
+            return
+        msg = f"오늘 {' / '.join(pending)} 했어? 안 했으면 알려줘 — 봇이 '약 먹었어' '운동 했어' 같이 말하면 자동 기록."
+        sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, msg)
+        if sent:
+            await save_message(ALLOWED_CHAT_ID, "assistant", msg, "cli")
+    except Exception as e:
+        log.error("습관 prompt 실패: %s", e)
+
+
+async def scheduled_automation_poll(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매 분 — 등록된 자동화 규칙 중 트리거 일치 시 실행."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from automations import run_due_automations
+        from claude_api import chat as claude_chat
+
+        async def send_async(text: str):
+            await _send_or_queue(context.bot, ALLOWED_CHAT_ID, text)
+            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+
+        async def claude_async(prompt: str) -> str:
+            return await asyncio.to_thread(
+                claude_chat,
+                prompt,
+                session="automation",
+                system="너는 비서. 사용자에게 보낼 짧고 실용적인 메시지를 만들어라. 이모지 금지.",
+                max_tokens=600,
+            )
+
+        await run_due_automations(send_async, claude_async)
+    except Exception as e:
+        log.error("automation poll 실패: %s", e)
+
+
 async def scheduled_weekly_preview(context: ContextTypes.DEFAULT_TYPE) -> None:
     """일요일 21:30 KST — 위클리 프리뷰."""
     if ALLOWED_CHAT_ID == 0:
@@ -961,6 +1134,9 @@ def main() -> None:
     app.add_handler(CommandHandler("casual", cmd_casual))
     app.add_handler(CommandHandler("brief", cmd_brief))
     app.add_handler(CommandHandler("preview", cmd_preview))
+    app.add_handler(CommandHandler("insights", cmd_insights))
+    app.add_handler(CommandHandler("voice", cmd_voice))
+    app.add_handler(CommandHandler("automation", cmd_automation))
 
     # 인라인 버튼 콜백 (확인/취소)
     app.add_handler(CallbackQueryHandler(cb_confirm, pattern=r"^confirm:"))
@@ -996,6 +1172,26 @@ def main() -> None:
         scheduled_morning_brief,
         time=dt_time(hour=9, minute=0, tzinfo=KST),
         name="morning_brief",
+    )
+
+    # 매일 21:00 KST — 습관 체크 prompt
+    app.job_queue.run_daily(
+        scheduled_habit_prompt,
+        time=dt_time(hour=21, minute=0, tzinfo=KST),
+        name="habit_prompt",
+    )
+
+    # 매일 22:30 KST — 저널 prompt ("오늘 어땠어?")
+    app.job_queue.run_daily(
+        scheduled_journal_prompt,
+        time=dt_time(hour=22, minute=30, tzinfo=KST),
+        name="journal_prompt",
+    )
+
+    # 매 분 — 자동화 규칙 폴링
+    app.job_queue.run_repeating(
+        scheduled_automation_poll,
+        interval=60, first=30, name="automation_poll",
     )
 
     # 매일 23:00 KST — 대화 요약 + GitHub push

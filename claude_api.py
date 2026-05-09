@@ -172,6 +172,76 @@ ASSISTANT_TOOLS = [
             "required": ["entity"],
         },
     },
+    {
+        "name": "get_today_luck",
+        "description": "운세봇(Sanjuk_Luck_bot)의 오늘의 운세를 가져온다. 사주 기반 분석이라 수다봇 비서가 컨텍스트로 활용 가능.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_proactive_insights",
+        "description": "능동 통찰 — 캘린더 패턴(반복 방문지·일정 밀집), 컨디션 패턴(수면·점수), 워크로드 분석을 종합해서 봇이 먼저 알려야 할 것들을 반환.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_work_summary",
+        "description": "work_timer 기록으로 작업 시간 요약. period=today/week.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "period": {"type": "string", "enum": ["today", "week"]},
+            },
+            "required": ["period"],
+        },
+    },
+    {
+        "name": "log_habit",
+        "description": "사용자가 '약 먹었어' '운동 했어' 등 말하면 이 도구로 기록. status는 'done'/'skip'/'partial'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "habit_name": {"type": "string", "description": "예: 약, 운동"},
+                "status": {"type": "string", "enum": ["done", "skip", "partial"]},
+                "note": {"type": "string", "description": "선택 메모"},
+            },
+            "required": ["habit_name", "status"],
+        },
+    },
+    {
+        "name": "get_habit_summary",
+        "description": "최근 N일 습관 달성률 요약. 사용자가 '약 잘 챙겨먹고 있어?' 묻거나 봇이 능동 리마인드 시 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "기본 7"},
+                "habit_name": {"type": "string", "description": "특정 습관만 (선택)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "list_automations",
+        "description": "등록된 자동화 규칙 목록. 사용자가 '내 자동화 뭐 있어?' 물을 때 사용.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "add_automation",
+        "description": (
+            "자동화 규칙 추가. trigger_type=daily_at(time HH:MM), weekly_at(weekday 0~6, time HH:MM), "
+            "on_calendar_keyword(keyword, minutes_before). action_type=send_message(text), prompt_claude(prompt). "
+            "예: 매일 8:30에 '오늘 잘 챙겨!' 메시지 → trigger=daily_at, time=08:30, action=send_message."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "trigger_type": {"type": "string", "enum": ["daily_at", "weekly_at", "on_calendar_keyword"]},
+                "trigger_config": {"type": "object", "description": "trigger 타입별 설정 dict"},
+                "action_type": {"type": "string", "enum": ["send_message", "prompt_claude"]},
+                "action_config": {"type": "object", "description": "action 타입별 설정 dict"},
+            },
+            "required": ["name", "trigger_type", "trigger_config", "action_type", "action_config"],
+        },
+    },
 ]
 
 
@@ -254,6 +324,55 @@ def _execute_tool(name: str, args: dict) -> str:
             from knowledge_graph import query_related, format_facts
             results = query_related(args["entity"], limit=args.get("limit", 30))
             return f"'{args['entity']}'에 대한 사실:\n" + format_facts(results)
+
+        if name == "get_today_luck":
+            try:
+                # luck_bot은 비동기 함수 — sync wrapper 필요
+                import asyncio
+                from Luck_bot.luck_bot import generate_daily_fortune
+                loop = asyncio.new_event_loop()
+                try:
+                    text = loop.run_until_complete(generate_daily_fortune())
+                finally:
+                    loop.close()
+                return text or "(오늘의 운세 생성 실패)"
+            except Exception as e:
+                return f"(운세봇 호출 실패: {e})"
+
+        if name == "get_proactive_insights":
+            from proactive_insights import generate_insights
+            return generate_insights() or "(특별한 통찰 없음 — 평온한 상태)"
+
+        if name == "get_work_summary":
+            from work_timer import get_today_report, get_week_report
+            period = args.get("period", "today")
+            if period == "week":
+                return get_week_report() or "(이번주 작업 기록 없음)"
+            return get_today_report() or "(오늘 작업 기록 없음)"
+
+        if name == "log_habit":
+            from habit_tracker import log_habit
+            ok = log_habit(args["habit_name"], args["status"], args.get("note", ""))
+            return "기록 완료" if ok else "기록 실패"
+
+        if name == "get_habit_summary":
+            from habit_tracker import get_summary
+            return get_summary(args.get("habit_name"), args.get("days", 7))
+
+        if name == "list_automations":
+            from automations import list_automations, format_rule_list
+            return format_rule_list(list_automations())
+
+        if name == "add_automation":
+            from automations import add_automation
+            rid = add_automation(
+                args["name"],
+                args["trigger_type"],
+                args["trigger_config"],
+                args["action_type"],
+                args["action_config"],
+            )
+            return f"자동화 #{rid} '{args['name']}' 등록 완료"
 
         return f"(알 수 없는 도구: {name})"
     except Exception as e:
