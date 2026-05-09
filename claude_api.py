@@ -122,6 +122,56 @@ ASSISTANT_TOOLS = [
         "description": "GCP VM 시스템 상태(봇 서비스 / 메모리 / 디스크 / Claude Code 세션) 확인.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "get_unread_emails",
+        "description": "Gmail의 미확인 메일 최근 N건 요약. inbox 정리/triage 시 사용. 토큰 미설정 시 안내 메시지 반환.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "조회할 메일 수 (기본 5, 최대 15)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_email_count",
+        "description": "Gmail의 미확인 메일 개수만 빠르게 확인. 'unread 메일 몇 개야?' 같은 질문에 적합.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "kg_add_fact",
+        "description": (
+            "지식 그래프에 사실(subject—predicate—object 트리플)을 추가한다. "
+            "사람·프로젝트·관계·이벤트 같은 의미 있는 정보를 알게 됐을 때 호출. "
+            "예: subject='광호', predicate='친구이며', object='5/23 부산 SRT 동행' / "
+            "subject='MAHA', predicate='프로젝트', object='시프트업 페이셜팀'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "주체 (사람·프로젝트·개념 등)"},
+                "predicate": {"type": "string", "description": "관계 동사구"},
+                "object": {"type": "string", "description": "대상/속성"},
+            },
+            "required": ["subject", "predicate", "object"],
+        },
+    },
+    {
+        "name": "kg_query",
+        "description": (
+            "지식 그래프에서 entity(사람·프로젝트·키워드)와 연결된 모든 사실을 조회. "
+            "사용자가 '광호 누구야?' 같은 질문하면 이 도구로 쌓인 사실 회상. "
+            "search_memory(벡터)와 보완적 — 관계가 명확할 땐 KG, 자유 텍스트 회상은 RAG."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity": {"type": "string", "description": "조회할 entity 이름"},
+                "limit": {"type": "integer", "description": "최대 결과 수 (기본 30)"},
+            },
+            "required": ["entity"],
+        },
+    },
 ]
 
 
@@ -170,6 +220,40 @@ def _execute_tool(name: str, args: dict) -> str:
         if name == "get_gcp_status":
             from gcp_status import get_gcp_context
             return get_gcp_context() or "(GCP 상태 정보 없음)"
+
+        if name == "get_unread_emails":
+            from gmail_client import get_recent_unread, _get_service
+            if not _get_service():
+                return "Gmail OAuth 미설정 — `python gmail_client.py --auth` 실행 필요."
+            limit = min(int(args.get("limit", 5)), 15)
+            mails = get_recent_unread(limit)
+            if not mails:
+                return "미확인 메일 없음."
+            lines = [f"미확인 메일 {len(mails)}건:"]
+            for m in mails:
+                sender = m.get("from", "").split("<")[0].strip()
+                lines.append(f"  - {sender} | {m.get('subject', '')}")
+                snip = (m.get("snippet") or "").strip()
+                if snip:
+                    lines.append(f"      → {snip[:120]}")
+            return "\n".join(lines)
+
+        if name == "get_email_count":
+            from gmail_client import get_unread_count, _get_service
+            if not _get_service():
+                return "Gmail OAuth 미설정."
+            n = get_unread_count()
+            return f"미확인 메일 {n}건" if n >= 0 else "Gmail 조회 실패"
+
+        if name == "kg_add_fact":
+            from knowledge_graph import add_fact
+            ok = add_fact(args["subject"], args["predicate"], args["object"])
+            return "사실 저장 완료" if ok else "이미 존재하거나 저장 실패"
+
+        if name == "kg_query":
+            from knowledge_graph import query_related, format_facts
+            results = query_related(args["entity"], limit=args.get("limit", 30))
+            return f"'{args['entity']}'에 대한 사실:\n" + format_facts(results)
 
         return f"(알 수 없는 도구: {name})"
     except Exception as e:

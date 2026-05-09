@@ -17,9 +17,10 @@ import sys
 from datetime import time as dt_time
 from pathlib import Path
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -143,6 +144,17 @@ async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.chat.send_action("typing")
     text = await _build_morning_brief()
+    if text:
+        await update.message.reply_text(text)
+        await save_message(update.effective_chat.id, "assistant", text, "cli")
+
+
+async def cmd_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """수동으로 위클리 프리뷰 즉시 생성."""
+    if not _is_allowed(update):
+        return
+    await update.message.chat.send_action("typing")
+    text = await _build_weekly_preview()
     if text:
         await update.message.reply_text(text)
         await save_message(update.effective_chat.id, "assistant", text, "cli")
@@ -574,12 +586,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     intent = await detect_intent_async(user_text)
     intent_name = intent.get("intent", "none")
 
-    # 0-post. 쓰기성 액션은 확인 단계 거침
+    # 0-post. 쓰기성 액션은 확인 단계 거침 (인라인 버튼)
     if intent_name in _CONFIRM_ACTIONS:
         context.user_data["pending_action"] = intent
         confirm_msg = _format_confirm(intent)
         await save_message(chat_id, "user", user_text, "cli")
-        await update.message.reply_text(confirm_msg)
+        await update.message.reply_text(
+            confirm_msg, reply_markup=_confirm_keyboard()
+        )
         await save_message(chat_id, "assistant", confirm_msg, "cli")
         return
 
@@ -794,14 +808,118 @@ def _format_confirm(intent: dict) -> str:
     action = intent.get("intent", "")
     params = intent.get("params", "")
     if action == "schedule":
-        return f"등록할 일정 — {params}\n맞으면 'ㅇㅇ', 다르면 다시 말해줘."
+        return f"등록할 일정 — {params}"
     if action == "schedule_update":
-        return f"수정할 일정 — {params}\n진행해도 돼?"
+        return f"수정할 일정 — {params}"
     if action == "schedule_delete":
-        return f"삭제할 일정 — {params}\n정말 삭제? 'ㅇㅇ'면 진행."
+        return f"삭제할 일정 — {params}"
     if action == "spend":
-        return f"지출 기록 — {params}\n맞으면 'ㅇㅇ'."
-    return f"확인 필요 — {params}\n진행해도 돼?"
+        return f"지출 기록 — {params}"
+    return f"확인 필요 — {params}"
+
+
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    """확인/취소 인라인 키보드."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ 확인", callback_data="confirm:yes"),
+        InlineKeyboardButton("❌ 취소", callback_data="confirm:no"),
+    ]])
+
+
+async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """인라인 버튼 confirm/cancel 콜백."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    if not _is_allowed(update):
+        return
+
+    pending = context.user_data.get("pending_action")
+    if not pending:
+        await query.edit_message_text(query.message.text + "\n\n(이미 처리된 요청)")
+        return
+
+    chat_id = query.message.chat_id
+    if query.data == "confirm:yes":
+        try:
+            result = await execute_intent(pending)
+        except Exception as e:
+            log.error("pending action 실행 실패: %s", e)
+            result = f"실행 실패: {e}"
+        context.user_data["pending_action"] = None
+        msg = (query.message.text or "") + f"\n\n→ {result or '진행했어.'}"
+        await query.edit_message_text(msg)
+        await save_message(chat_id, "assistant", result or "진행했어.", "cli")
+    else:
+        context.user_data["pending_action"] = None
+        await query.edit_message_text((query.message.text or "") + "\n\n→ 취소했어.")
+        await save_message(chat_id, "assistant", "취소했어.", "cli")
+
+
+async def _build_weekly_preview() -> str:
+    """일요일 저녁 위클리 프리뷰 텍스트."""
+    from google_calendar import _fetch_events, find_conflicts, get_week_schedule
+    from todo_manager import get_todo_context
+    from claude_api import chat as claude_chat
+    from datetime import datetime, timedelta
+
+    now = datetime.now(KST)
+    next_week_start = (now + timedelta(days=(7 - now.weekday()) % 7 or 7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    next_week_end = next_week_start + timedelta(days=7)
+    next_events = _fetch_events(next_week_start, next_week_end)
+    conflicts = find_conflicts(next_events)
+
+    week_text = get_week_schedule(days=14)
+    todos = get_todo_context() or "할일 없음"
+
+    raw = (
+        f"=== 다음주 미리보기 데이터 ({next_week_start.strftime('%-m/%-d')} ~ {(next_week_end - timedelta(days=1)).strftime('%-m/%-d')}) ===\n\n"
+        f"[다음주 + 그 다음주 일정]\n{week_text}\n\n"
+        f"[다음주 일정 수: {len(next_events)}건]\n"
+        f"[충돌 감지: {len(conflicts)}건]\n\n"
+        f"[현재 미완료 할일]\n{todos}"
+    )
+
+    prompt = (
+        "위 데이터로 일요일 저녁 위클리 프리뷰를 만들어줘. "
+        "친구 비서 톤. 이모지 금지. 콜센터 말투 금지. "
+        "구성: (1) 다음주 시간 부담 한 줄 평가 (가벼움/평범/빠듯) "
+        "(2) 핵심 일정 3~5개 우선순위로 "
+        "(3) 충돌 있으면 명시 + 해결 제안 "
+        "(4) 미완료 할일 중 다음주에 처리해야 할 것 1~2개 "
+        "(5) 마지막 한 마디(준비할 거/마음가짐). 단일 메시지로.\n\n"
+        f"{raw}"
+    )
+    try:
+        text = await asyncio.to_thread(
+            claude_chat,
+            prompt,
+            session="weekly_preview",
+            system="너는 승호의 개인 비서. 다음 한 주 그림을 짧고 정확하게 보여줘.",
+            max_tokens=1000,
+        )
+        return text or ""
+    except Exception as e:
+        log.error("위클리 프리뷰 생성 실패: %s", e)
+        return f"다음주 미리보기.\n\n{raw}"
+
+
+async def scheduled_weekly_preview(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """일요일 21:30 KST — 위클리 프리뷰."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    log.info("위클리 프리뷰 생성 시작")
+    try:
+        text = await _build_weekly_preview()
+        if text:
+            await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=text)
+            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+            log.info("위클리 프리뷰 전송 완료")
+    except Exception as e:
+        log.error("위클리 프리뷰 실패: %s", e)
 
 
 # ─── 메인 ───────────────────────────────────────────────
@@ -842,6 +960,10 @@ def main() -> None:
     app.add_handler(CommandHandler("deep", cmd_deep))
     app.add_handler(CommandHandler("casual", cmd_casual))
     app.add_handler(CommandHandler("brief", cmd_brief))
+    app.add_handler(CommandHandler("preview", cmd_preview))
+
+    # 인라인 버튼 콜백 (확인/취소)
+    app.add_handler(CallbackQueryHandler(cb_confirm, pattern=r"^confirm:"))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -895,6 +1017,14 @@ def main() -> None:
         scheduled_digest,
         time=dt_time(hour=21, minute=0, tzinfo=KST),
         name="daily_digest",
+    )
+
+    # 매주 일요일 21:30 KST — 다음주 위클리 프리뷰
+    app.job_queue.run_daily(
+        scheduled_weekly_preview,
+        time=dt_time(hour=21, minute=30, tzinfo=KST),
+        days=(6,),
+        name="weekly_preview",
     )
 
     # 매주 일요일 23:30 KST — 주간 기억 통합
