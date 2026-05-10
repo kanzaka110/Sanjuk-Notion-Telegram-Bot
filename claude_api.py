@@ -41,12 +41,19 @@ def _get_token() -> str:
 
 
 def _get_client() -> Anthropic | None:
-    """Anthropic 클라이언트를 반환한다."""
+    """Anthropic 클라이언트를 반환한다.
+
+    OAuth 토큰(sk-ant-oat01-)은 Bearer 인증 + anthropic-beta: oauth-2025-04-20
+    헤더가 필요. x-api-key로 보내면 401.
+    """
     token = _get_token()
     if not token:
         log.error("OAuth 토큰 없음")
         return None
-    return Anthropic(api_key=token)
+    return Anthropic(
+        auth_token=token,
+        default_headers={"anthropic-beta": "oauth-2025-04-20"},
+    )
 
 
 # ─── 대화 히스토리 관리 ────────────────────────────────
