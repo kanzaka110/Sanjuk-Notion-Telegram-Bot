@@ -35,6 +35,12 @@ from database import (
 )
 from context_loader import get_full_context, refresh_context
 from gemini_client import GeminiClient
+from hevy.jobs import (
+    scheduled_hevy_sync,
+    scheduled_morning_workout,
+    scheduled_weekly_workout_report,
+    scheduled_workout_nudge,
+)
 from summarizer import (
     generate_checkin_message,
     run_daily_summary,
@@ -341,6 +347,33 @@ def main() -> None:
         time=dt_time(hour=23, minute=30, tzinfo=KST),
         days=(6,),
         name="weekly_consolidation",
+    )
+
+    # ─── Hevy 운동 통합 ───────────────────────────────
+    # 매일 04:00 KST — Hevy API → 캐시/PR DB 갱신
+    app.job_queue.run_daily(
+        scheduled_hevy_sync,
+        time=dt_time(hour=4, minute=0, tzinfo=KST),
+        name="hevy_sync",
+    )
+    # 매일 08:00 KST — 어제 운동 요약 (운동 있을 때만)
+    app.job_queue.run_daily(
+        scheduled_morning_workout,
+        time=dt_time(hour=8, minute=0, tzinfo=KST),
+        name="morning_workout",
+    )
+    # 매일 21:00 KST — 운동 독려 (오늘 X & 이번주 < 3회)
+    app.job_queue.run_daily(
+        scheduled_workout_nudge,
+        time=dt_time(hour=21, minute=0, tzinfo=KST),
+        name="workout_nudge",
+    )
+    # 매주 월요일 08:05 KST — 지난주 PR/추세 리포트
+    app.job_queue.run_daily(
+        scheduled_weekly_workout_report,
+        time=dt_time(hour=8, minute=5, tzinfo=KST),
+        days=(0,),
+        name="weekly_workout_report",
     )
 
     log.info("산적 수다방 봇 시작! (Claude CLI)")
