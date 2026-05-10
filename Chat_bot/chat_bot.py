@@ -13,16 +13,38 @@ Claude CLI 기반 수다 봇 (API 비용 $0).
 import asyncio
 import logging
 import re
+import sys
 from datetime import time as dt_time
+from pathlib import Path
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
+
+# 음성 메시지 처리
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from voice_handler import handle_voice_message
+from todo_manager import add_todo, complete_todo, delete_todo, get_pending_todos, format_todo_list, get_todo_context
+from expense_tracker import add_expense, parse_expense, get_today_expenses, get_month_expenses, get_expense_summary
+from photo_handler import handle_photo_message
+from web_search import search_web_async
+from calendar_writer import parse_and_create_event
+from rag_memory import search_memory, store_memory, get_relevant_context, get_memory_stats
+from meeting_brief import check_and_notify as meeting_check
+from github_digest import get_github_digest
+from bot_health import health_check_and_notify
+from stock_alert import add_watch, remove_watch, get_watchlist, check_prices, format_alerts
+from focus_mode import start_focus, stop_focus, is_focus_active, queue_message, get_focus_status
+from work_timer import start_work, stop_work, get_today_report as work_today_report, get_week_report as work_week_report
+from remote_exec import handle_exec
+from condition_tracker import log_condition, get_summary as condition_summary
+from intent_router import detect_intent_async, execute_intent
 
 from config import ALLOWED_CHAT_ID, KST, TELEGRAM_BOT_TOKEN
 from database import (
@@ -43,6 +65,7 @@ from hevy.jobs import (
 )
 from summarizer import (
     generate_checkin_message,
+    generate_daily_digest,
     run_daily_summary,
     run_weekly_consolidation,
     summarize_segment,
@@ -105,6 +128,101 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("대화 컨텍스트 초기화 완료.")
 
 
+async def cmd_deep(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Opus 4.7로 전환 — 깊이 있는 사고/분석용."""
+    if not _is_allowed(update):
+        return
+    _, msg = gemini.switch_to_pro()
+    await update.message.reply_text(msg)
+
+
+async def cmd_casual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sonnet 4.6 기본 모드로 복귀."""
+    if not _is_allowed(update):
+        return
+    msg = gemini.switch_to_flash()
+    await update.message.reply_text(msg)
+
+
+async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """수동으로 모닝 브리핑 즉시 생성."""
+    if not _is_allowed(update):
+        return
+    await update.message.chat.send_action("typing")
+    text = await _build_morning_brief()
+    if text:
+        await update.message.reply_text(text)
+        await save_message(update.effective_chat.id, "assistant", text, "cli")
+
+
+async def cmd_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """수동으로 위클리 프리뷰 즉시 생성."""
+    if not _is_allowed(update):
+        return
+    await update.message.chat.send_action("typing")
+    text = await _build_weekly_preview()
+    if text:
+        await update.message.reply_text(text)
+        await save_message(update.effective_chat.id, "assistant", text, "cli")
+
+
+async def cmd_insights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """능동 통찰 즉시 표시."""
+    if not _is_allowed(update):
+        return
+    from proactive_insights import generate_insights
+    text = await asyncio.to_thread(generate_insights)
+    await update.message.reply_text(text or "특별한 통찰 없음 — 평온한 상태.")
+
+
+async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """음성 응답 모드 토글. /voice on /voice off."""
+    if not _is_allowed(update):
+        return
+    arg = " ".join(context.args).strip().lower() if context.args else ""
+    current = context.user_data.get("voice_reply", False)
+    if arg == "on":
+        context.user_data["voice_reply"] = True
+        await update.message.reply_text("음성 응답 ON. 모든 답변에 음성도 함께 전송.")
+    elif arg == "off":
+        context.user_data["voice_reply"] = False
+        await update.message.reply_text("음성 응답 OFF.")
+    else:
+        await update.message.reply_text(
+            f"현재 음성 응답: {'ON' if current else 'OFF'}\n"
+            f"사용법: /voice on  /voice off"
+        )
+
+
+async def cmd_automation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """자동화 규칙 관리. /automation list /automation delete <id>"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    sub = args[0].lower() if args else "list"
+    if sub == "list":
+        from automations import list_automations, format_rule_list
+        await update.message.reply_text(format_rule_list(list_automations()))
+        return
+    if sub == "delete" and len(args) >= 2:
+        from automations import delete_automation
+        ok = delete_automation(int(args[1]))
+        await update.message.reply_text("삭제 완료" if ok else "찾을 수 없음")
+        return
+    if sub == "toggle" and len(args) >= 3:
+        from automations import toggle_automation
+        ok = toggle_automation(int(args[1]), args[2].lower() in ("on", "true", "1"))
+        await update.message.reply_text("변경 완료" if ok else "찾을 수 없음")
+        return
+    await update.message.reply_text(
+        "사용법:\n"
+        "  /automation list\n"
+        "  /automation delete <id>\n"
+        "  /automation toggle <id> on|off\n"
+        "추가는 자연어로 봇한테 부탁: \"매일 오전 8:30에 좋은 아침 메시지 보내는 자동화 만들어줘\""
+    )
+
+
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """수동으로 오늘 대화 요약을 실행한다."""
     if not _is_allowed(update):
@@ -122,43 +240,300 @@ async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"컨텍스트 새로고침 완료. ({len(ctx)}자 로딩)")
 
 
+async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """할일 목록 보기."""
+    if not _is_allowed(update):
+        return
+    todos = get_pending_todos()
+    await update.message.reply_text(format_todo_list(todos) if todos else "할일 없음")
+
+
+async def cmd_todo_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """할일 추가. /add 보고서 작성"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /add 할일 내용")
+        return
+    item = add_todo(text)
+    await update.message.reply_text(f"추가: #{item['id']} {item['text']}")
+
+
+async def cmd_todo_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """할일 완료. /done 1"""
+    if not _is_allowed(update):
+        return
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("사용법: /done 번호")
+        return
+    item = complete_todo(int(context.args[0]))
+    if item:
+        await update.message.reply_text(f"완료: #{item['id']} {item['text']}")
+    else:
+        await update.message.reply_text("해당 번호 없음")
+
+
+async def cmd_spend(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """지출 기록. /spend 커피 5500"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /spend 커피 5500")
+        return
+    parsed = parse_expense(text)
+    if not parsed:
+        await update.message.reply_text("금액 인식 실패. '커피 5500' 형식으로")
+        return
+    item = add_expense(parsed["description"], parsed["amount"])
+    today = get_today_expenses()
+    total = sum(e["amount"] for e in today)
+    await update.message.reply_text(
+        f"기록: {item['description']} {item['amount']:,}원\n오늘 총 지출: {total:,}원"
+    )
+
+
+async def cmd_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """지출 내역 조회."""
+    if not _is_allowed(update):
+        return
+    arg = context.args[0] if context.args else "today"
+    if arg == "month":
+        expenses = get_month_expenses()
+        header = "이번 달 지출"
+    else:
+        expenses = get_today_expenses()
+        header = "오늘 지출"
+    await update.message.reply_text(f"{header}\n{get_expense_summary(expenses)}")
+
+
+async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """웹 검색. /search 언리얼 5.6 업데이트"""
+    if not _is_allowed(update):
+        return
+    query = " ".join(context.args) if context.args else ""
+    if not query:
+        await update.message.reply_text("사용법: /search 검색어")
+        return
+    await update.message.chat.send_action("typing")
+    result = await search_web_async(query)
+    if len(result) > 4000:
+        result = result[:4000]
+    await update.message.reply_text(result)
+
+
+async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """일정 생성. /schedule 다음 주 화요일 3시 팀 미팅"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /schedule 다음 주 화요일 3시 팀 미팅")
+        return
+    await update.message.chat.send_action("typing")
+    import asyncio
+    event = await asyncio.to_thread(parse_and_create_event, text)
+    if event:
+        await update.message.reply_text(f"일정 등록 완료: {event['summary']}")
+    else:
+        await update.message.reply_text("일정 등록 실패. 다시 시도해줘.")
+
+
+async def cmd_focus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """집중 모드. /focus 90 또는 /focus off"""
+    if not _is_allowed(update):
+        return
+    arg = context.args[0] if context.args else "90"
+    if arg == "off":
+        await update.message.reply_text(stop_focus())
+    else:
+        try:
+            minutes = int(arg)
+            await update.message.reply_text(start_focus(minutes))
+        except ValueError:
+            await update.message.reply_text("사용법: /focus 90 또는 /focus off")
+
+
+async def cmd_work(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """작업 시작. /work 리타겟 작업"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text(work_today_report())
+        return
+    if text == "stop":
+        await update.message.reply_text(stop_work())
+    elif text == "week":
+        await update.message.reply_text(work_week_report())
+    else:
+        await update.message.reply_text(start_work(text))
+
+
+async def cmd_exec(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """원격 실행. /exec 운세봇 로그 확인"""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /exec 운세봇 에러 로그 확인")
+        return
+    await update.message.chat.send_action("typing")
+    result = await handle_exec(text)
+    if len(result) > 4000:
+        result = result[:4000]
+    await update.message.reply_text(result)
+
+
+async def cmd_watch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """주식 감시. /watch 005930.KS 3"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    if not args:
+        items = get_watchlist()
+        if items:
+            lines = ["감시 종목:"] + [f"- {i['ticker']} ({i['threshold']}%)" for i in items]
+            await update.message.reply_text("\n".join(lines))
+        else:
+            await update.message.reply_text("감시 종목 없음. /watch 종목코드 등락률%")
+        return
+    ticker = args[0]
+    threshold = float(args[1]) if len(args) > 1 else 3.0
+    item = add_watch(ticker, threshold)
+    await update.message.reply_text(f"감시 추가: {item['ticker']} ({item['threshold']}%)")
+
+
+async def cmd_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """컨디션 기록. /condition 7 8 또는 /condition"""
+    if not _is_allowed(update):
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(condition_summary(30))
+        return
+    try:
+        sleep_h = float(args[0])
+        score = int(args[1]) if len(args) > 1 else 5
+        note = " ".join(args[2:]) if len(args) > 2 else ""
+        entry = log_condition(sleep_h, score, note)
+        await update.message.reply_text(f"기록: 수면 {entry['sleep']}h, 컨디션 {entry['score']}/10")
+    except (ValueError, IndexError):
+        await update.message.reply_text("사용법: /condition 수면시간 점수\n예: /condition 7 8")
+
+
+async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """온보딩 메모 저장 (RAG). /note P4 브랜치 따는 법: ..."""
+    if not _is_allowed(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("사용법: /note 메모 내용")
+        return
+    store_memory(text, {"source": "manual_note", "category": "onboarding"})
+    await update.message.reply_text(f"메모 저장 완료 ({len(text)}자)")
+
+
+async def cmd_recall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """과거 대화 검색. /recall 투자 전략"""
+    if not _is_allowed(update):
+        return
+    query = " ".join(context.args) if context.args else ""
+    if not query:
+        stats = get_memory_stats()
+        await update.message.reply_text(f"{stats}\n사용법: /recall 검색어")
+        return
+    memories = search_memory(query, n_results=5)
+    if not memories:
+        await update.message.reply_text("관련 기억 없음")
+        return
+    lines = []
+    for m in memories:
+        lines.append(f"[{m['date']}] {m['text'][:200]}")
+    await update.message.reply_text("\n\n".join(lines))
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """사진 메시지 분석."""
+    if not _is_allowed(update):
+        return
+    if not update.message:
+        return
+    await update.message.chat.send_action("typing")
+    caption = update.message.caption or ""
+    result = await handle_photo_message(update, context, caption)
+    if result:
+        # 지출 영수증 감지
+        parsed = parse_expense(result)
+        if parsed and "영수증" in result.lower() or "원" in result:
+            await update.message.reply_text(result)
+        else:
+            await update.message.reply_text(result)
+    else:
+        await update.message.reply_text("사진 분석 실패. 다시 보내줘.")
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """도움말."""
     if not _is_allowed(update):
         return
     await update.message.reply_text(
-        "산적 수다방 도움말\n\n"
-        "/status - 상태\n"
-        "/clear - 대화 초기화\n"
-        "/summary - 오늘 요약\n"
-        "/refresh - 컨텍스트 새로고침\n"
-        "/help - 도움말"
+        "비서봇 도움말\n\n"
+        "-- 기본 --\n"
+        "/status /clear /refresh\n\n"
+        "-- 할일 --\n"
+        "/todo /add 내용 /done 번호\n\n"
+        "-- 지출 --\n"
+        "/spend 커피 5500 /expenses\n\n"
+        "-- 작업 --\n"
+        "/work 작업명 - 시작\n"
+        "/work stop - 종료\n"
+        "/work - 오늘 리포트\n"
+        "/work week - 주간 리포트\n\n"
+        "-- 집중 --\n"
+        "/focus 90 - 집중모드 시작\n"
+        "/focus off - 해제\n\n"
+        "-- 도구 --\n"
+        "/search 검색어 - 웹 검색\n"
+        "/schedule 일정 - 캘린더 등록\n"
+        "/exec 명령 - GCP 원격 실행\n"
+        "/recall 키워드 - 과거 검색\n"
+        "/note 메모 - 지식 저장\n\n"
+        "-- 기록 --\n"
+        "/condition 수면h 점수 - 컨디션\n"
+        "/watch 종목 %  - 주가 감시\n"
+        "/summary - 대화 요약\n\n"
+        "음성/사진도 지원!"
     )
 
 
-# ─── 멀티 버블 응답 ────────────────────────────────────
-def _split_into_bubbles(text: str) -> list[str]:
-    """응답을 2-3개 자연스러운 메시지 버블로 분리한다."""
-    text = text.strip()
+# ─── 단일/분할 응답 ────────────────────────────────────
+# Telegram 단일 메시지 한도(약 4096자) 안쪽이면 한 번에 보낸다.
+# 4096자 초과 시에만 안전하게 분할.
+TELEGRAM_MAX_LEN = 4000
 
-    if len(text) <= 100:
+
+def _split_into_bubbles(text: str) -> list[str]:
+    """응답을 단일 메시지로 보내되, 4000자 초과 시에만 안전하게 분할한다."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= TELEGRAM_MAX_LEN:
         return [text]
 
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    if 2 <= len(paragraphs) <= 4:
-        return paragraphs
-
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    if len(lines) >= 3:
-        chunk_size = max(1, len(lines) // 3)
-        bubbles = []
-        for i in range(0, len(lines), chunk_size):
-            chunk = "\n".join(lines[i : i + chunk_size])
-            if chunk:
-                bubbles.append(chunk)
-        return bubbles[:3]
-
-    return [text]
+    bubbles: list[str] = []
+    remaining = text
+    while len(remaining) > TELEGRAM_MAX_LEN:
+        # 가능한 줄바꿈 경계에서 자르기
+        split_at = remaining.rfind("\n", 0, TELEGRAM_MAX_LEN)
+        if split_at < TELEGRAM_MAX_LEN // 2:
+            split_at = TELEGRAM_MAX_LEN
+        bubbles.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+    if remaining:
+        bubbles.append(remaining)
+    return bubbles
 
 
 async def _send_bubbles(message, bubbles: list[str]) -> None:
@@ -172,6 +547,25 @@ async def _send_bubbles(message, bubbles: list[str]) -> None:
         if i < len(bubbles) - 1:
             await message.chat.send_action("typing")
             await asyncio.sleep(0.8)
+
+
+async def _maybe_send_tts(message, text: str, user_data: dict) -> None:
+    """voice_reply 모드 켜져있으면 응답을 TTS로도 전송."""
+    if not user_data.get("voice_reply"):
+        return
+    if not text or len(text) > 1500:
+        return
+    try:
+        from gtts import gTTS
+        import io
+        # 한국어 우선, 영어 섞이면 자연스럽지만 일단 ko 고정
+        tts = gTTS(text=text, lang="ko")
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        await message.reply_voice(voice=buf)
+    except Exception as e:
+        log.debug("TTS 발송 스킵: %s", e)
 
 
 # ─── 대화 세그먼트 감지 ────────────────────────────────
@@ -202,6 +596,38 @@ async def _check_and_save_segment(chat_id: int) -> None:
 
 
 # ─── 메시지 핸들러 ──────────────────────────────────────
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """음성 메시지를 텍스트로 변환 후 처리."""
+    if not _is_allowed(update):
+        return
+    if not update.message:
+        return
+
+    await update.message.chat.send_action("typing")
+    text = await handle_voice_message(update, context)
+    if not text:
+        await update.message.reply_text("음성 인식 실패. 다시 보내줘.")
+        return
+
+    # 변환된 텍스트 표시 후 대화 처리
+    await update.message.reply_text(f"[음성 인식] {text}")
+
+    # 일반 메시지와 동일하게 처리
+    chat_id = update.effective_chat.id
+    await _check_and_save_segment(chat_id)
+    await save_message(chat_id, "user", text, "cli")
+
+    recent = await get_recent_messages(chat_id, limit=20)
+    core_ctx = get_full_context()
+
+    answer, _ = await gemini.ask(text, recent, core_memory_context=core_ctx)
+    await save_message(chat_id, "assistant", answer, "cli")
+
+    bubbles = _split_into_bubbles(answer)
+    await _send_bubbles(update.message, bubbles)
+    await _maybe_send_tts(update.message, answer, context.user_data)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """일반 텍스트 메시지 처리."""
     if not _is_allowed(update):
@@ -212,34 +638,83 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat_id = update.effective_chat.id
     user_text = update.message.text
 
-    # 0. 세그먼트 감지
+    await update.message.chat.send_action("typing")
+    action_context = ""
+
+    # 0-pre. 직전 turn에 pending action 있으면 사용자 응답으로 confirm/deny 판정
+    pending = context.user_data.get("pending_action")
+    if pending:
+        if _is_confirm(user_text):
+            try:
+                action_result = await execute_intent(pending)
+            except Exception as e:
+                log.error("pending action 실행 실패: %s", e)
+                action_result = f"실행 실패: {e}"
+            context.user_data["pending_action"] = None
+            await save_message(chat_id, "user", user_text, "cli")
+            msg = action_result or "진행했어."
+            await update.message.reply_text(msg)
+            await save_message(chat_id, "assistant", msg, "cli")
+            return
+        if _is_deny(user_text):
+            context.user_data["pending_action"] = None
+            await save_message(chat_id, "user", user_text, "cli")
+            await update.message.reply_text("취소했어.")
+            await save_message(chat_id, "assistant", "취소했어.", "cli")
+            return
+        # confirm/deny가 아니면 pending 폐기하고 새 메시지로 처리
+        context.user_data["pending_action"] = None
+
+    # 0. 의도 감지
+    intent = await detect_intent_async(user_text)
+    intent_name = intent.get("intent", "none")
+
+    # 0-post. 쓰기성 액션은 확인 단계 거침 (인라인 버튼)
+    if intent_name in _CONFIRM_ACTIONS:
+        context.user_data["pending_action"] = intent
+        confirm_msg = _format_confirm(intent)
+        await save_message(chat_id, "user", user_text, "cli")
+        await update.message.reply_text(
+            confirm_msg, reply_markup=_confirm_keyboard()
+        )
+        await save_message(chat_id, "assistant", confirm_msg, "cli")
+        return
+
+    # 0-other. 읽기/유틸 의도(검색/메모 등)는 즉시 실행
+    if intent_name != "none":
+        action_result = await execute_intent(intent)
+        if action_result:
+            action_context = f"[시스템 실행 결과: {action_result}]"
+
+    # 1. 세그먼트 감지
     await _check_and_save_segment(chat_id)
 
-    # 1. 사용자 메시지 저장
+    # 2. 사용자 메시지 저장
     await save_message(chat_id, "user", user_text, "cli")
 
-    # 2. 최근 대화 조회
+    # 3. 최근 대화 조회
     if context.user_data.get("clear_context"):
         recent = []
         context.user_data["clear_context"] = False
     else:
         recent = await get_recent_messages(chat_id, limit=20)
 
-    # 3. 코어 메모리 로딩 (context_loader에서 제공)
-    core_ctx = get_full_context()
+    # 4. Claude에 메시지 전달 (자동 실행 결과가 있으면 함께)
+    prompt = user_text
+    if action_context:
+        prompt = f"{user_text}\n\n{action_context}"
 
-    # 4. Claude CLI 응답 생성
     answer, fallback_notice = await gemini.ask(
-        user_text, recent,
-        core_memory_context=core_ctx,
+        prompt, recent,
     )
 
     # 5. 응답 저장
     await save_message(chat_id, "assistant", answer, "cli")
 
-    # 6. 멀티 버블 전송
+    # 6. 멀티 버블 전송 + TTS (음성 모드 켜져있으면)
     bubbles = _split_into_bubbles(answer)
     await _send_bubbles(update.message, bubbles)
+    await _maybe_send_tts(update.message, answer, context.user_data)
 
 
 # ─── 스케줄러 콜백 ──────────────────────────────────────
@@ -284,6 +759,23 @@ async def scheduled_checkin(context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("선제적 연락 실패: %s", e)
 
 
+async def scheduled_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 21시 KST — 일일 다이제스트 전송."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    log.info("일일 다이제스트 생성 시작")
+    try:
+        digest = await generate_daily_digest()
+        if digest:
+            await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=digest)
+            await save_message(ALLOWED_CHAT_ID, "assistant", digest, "cli")
+            log.info("일일 다이제스트 전송 완료")
+        else:
+            log.info("다이제스트 생성 스킵 (내용 없음)")
+    except Exception as e:
+        log.error("일일 다이제스트 실패: %s", e)
+
+
 async def scheduled_consolidation(context: ContextTypes.DEFAULT_TYPE) -> None:
     """매주 일요일 23:30 KST — 주간 기억 통합."""
     log.info("주간 기억 통합 시작")
@@ -297,14 +789,338 @@ async def scheduled_consolidation(context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("주간 기억 통합 실패: %s", e)
 
 
+async def _build_morning_brief() -> str:
+    """모닝 브리핑 텍스트 생성. Claude로 자연스러운 톤 부여."""
+    from datetime import datetime
+    from google_calendar import get_today_schedule, get_week_schedule
+    from todo_manager import get_todo_context
+    from claude_api import chat as claude_chat
+
+    today_str = datetime.now(KST).strftime("%-m/%-d (%a)")
+    today_cal = get_today_schedule()
+    upcoming = get_week_schedule(days=3)
+    todos = get_todo_context() or "할일 없음"
+
+    raw = (
+        f"=== 모닝 브리핑 데이터 ({today_str}) ===\n\n"
+        f"[오늘 일정]\n{today_cal}\n\n"
+        f"[앞으로 3일 일정]\n{upcoming}\n\n"
+        f"[할일]\n{todos}"
+    )
+
+    prompt = (
+        "아래 데이터로 승호한테 보낼 모닝 브리핑을 만들어줘. "
+        "친구 비서 톤. 이모지 금지. 콜센터 말투 금지. "
+        "오늘 일정 우선 강조하고, 충돌(⚠) 있으면 먼저 지적. "
+        "3일 일정은 맥락만 짧게. 할일은 제일 우선순위 1~2개만 언급. "
+        "마지막은 실용적 한 마디(준비물/이동/컨디션 등). 한 메시지로 묶어서.\n\n"
+        f"{raw}"
+    )
+    try:
+        text = await asyncio.to_thread(
+            claude_chat,
+            prompt,
+            session="morning_brief",
+            system="너는 승호의 개인 비서. 간결하고 실용적으로.",
+            max_tokens=800,
+        )
+        return text or ""
+    except Exception as e:
+        log.error("모닝 브리핑 생성 실패: %s", e)
+        # 폴백 — Claude 실패 시 raw 데이터 그대로
+        return f"좋은 아침. {today_str} 브리핑.\n\n{raw}"
+
+
+async def scheduled_morning_brief(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 09:00 KST — 모닝 브리핑 (능동 통찰 포함)."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    log.info("모닝 브리핑 생성 시작")
+    try:
+        text = await _build_morning_brief()
+        if text:
+            # 능동 통찰 추가
+            from proactive_insights import generate_insights
+            insights = await asyncio.to_thread(generate_insights)
+            if insights:
+                text = text + "\n\n" + insights
+            sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, text)
+            if sent:
+                await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+                log.info("모닝 브리핑 전송 완료")
+    except Exception as e:
+        log.error("모닝 브리핑 실패: %s", e)
+
+
+async def scheduled_travel_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매 5분 — 위치 있는 이벤트 1시간 전 출발 알림."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from meeting_brief import get_travel_alerts, generate_travel_brief, _notified_travel
+        events = await asyncio.to_thread(get_travel_alerts)
+        for ev in events:
+            brief = generate_travel_brief(ev)
+            if brief:
+                await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=brief)
+                await save_message(ALLOWED_CHAT_ID, "assistant", brief, "cli")
+                _notified_travel.add(ev["id"])
+                log.info("출발 알림 전송: %s", ev.get("summary", ""))
+    except Exception as e:
+        log.error("출발 알림 실패: %s", e)
+
+
+# ─── 액션 확인 흐름 헬퍼 ────────────────────────────────
+_CONFIRM_PATTERNS = re.compile(
+    r"^\s*(ㅇㅇ+|응응?|어어?|네+|예|오케이|ok|okay|yes|y|좋아|"
+    r"맞아|맞|그래|그렇게|진행해?|해줘|진행|등록해|확정)\s*[.!~]?\s*$",
+    re.IGNORECASE,
+)
+_DENY_PATTERNS = re.compile(
+    r"^\s*(아니|아니야|취소|아냐|nope?|no|n|싫어|하지마|그만)\s*[.!~]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_confirm(text: str) -> bool:
+    return bool(_CONFIRM_PATTERNS.match(text))
+
+
+def _is_deny(text: str) -> bool:
+    return bool(_DENY_PATTERNS.match(text))
+
+
+_CONFIRM_ACTIONS = {"schedule", "schedule_update", "schedule_delete", "spend"}
+
+
+def _format_confirm(intent: dict) -> str:
+    """confirm 요청 메시지를 만든다."""
+    action = intent.get("intent", "")
+    params = intent.get("params", "")
+    if action == "schedule":
+        return f"등록할 일정 — {params}"
+    if action == "schedule_update":
+        return f"수정할 일정 — {params}"
+    if action == "schedule_delete":
+        return f"삭제할 일정 — {params}"
+    if action == "spend":
+        return f"지출 기록 — {params}"
+    return f"확인 필요 — {params}"
+
+
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    """확인/취소 인라인 키보드."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ 확인", callback_data="confirm:yes"),
+        InlineKeyboardButton("❌ 취소", callback_data="confirm:no"),
+    ]])
+
+
+async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """인라인 버튼 confirm/cancel 콜백."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    if not _is_allowed(update):
+        return
+
+    pending = context.user_data.get("pending_action")
+    if not pending:
+        await query.edit_message_text(query.message.text + "\n\n(이미 처리된 요청)")
+        return
+
+    chat_id = query.message.chat_id
+    if query.data == "confirm:yes":
+        try:
+            result = await execute_intent(pending)
+        except Exception as e:
+            log.error("pending action 실행 실패: %s", e)
+            result = f"실행 실패: {e}"
+        context.user_data["pending_action"] = None
+        msg = (query.message.text or "") + f"\n\n→ {result or '진행했어.'}"
+        await query.edit_message_text(msg)
+        await save_message(chat_id, "assistant", result or "진행했어.", "cli")
+    else:
+        context.user_data["pending_action"] = None
+        await query.edit_message_text((query.message.text or "") + "\n\n→ 취소했어.")
+        await save_message(chat_id, "assistant", "취소했어.", "cli")
+
+
+async def _build_weekly_preview() -> str:
+    """일요일 저녁 위클리 프리뷰 텍스트."""
+    from google_calendar import _fetch_events, find_conflicts, get_week_schedule
+    from todo_manager import get_todo_context
+    from claude_api import chat as claude_chat
+    from datetime import datetime, timedelta
+
+    now = datetime.now(KST)
+    next_week_start = (now + timedelta(days=(7 - now.weekday()) % 7 or 7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    next_week_end = next_week_start + timedelta(days=7)
+    next_events = _fetch_events(next_week_start, next_week_end)
+    conflicts = find_conflicts(next_events)
+
+    week_text = get_week_schedule(days=14)
+    todos = get_todo_context() or "할일 없음"
+
+    raw = (
+        f"=== 다음주 미리보기 데이터 ({next_week_start.strftime('%-m/%-d')} ~ {(next_week_end - timedelta(days=1)).strftime('%-m/%-d')}) ===\n\n"
+        f"[다음주 + 그 다음주 일정]\n{week_text}\n\n"
+        f"[다음주 일정 수: {len(next_events)}건]\n"
+        f"[충돌 감지: {len(conflicts)}건]\n\n"
+        f"[현재 미완료 할일]\n{todos}"
+    )
+
+    prompt = (
+        "위 데이터로 일요일 저녁 위클리 프리뷰를 만들어줘. "
+        "친구 비서 톤. 이모지 금지. 콜센터 말투 금지. "
+        "구성: (1) 다음주 시간 부담 한 줄 평가 (가벼움/평범/빠듯) "
+        "(2) 핵심 일정 3~5개 우선순위로 "
+        "(3) 충돌 있으면 명시 + 해결 제안 "
+        "(4) 미완료 할일 중 다음주에 처리해야 할 것 1~2개 "
+        "(5) 마지막 한 마디(준비할 거/마음가짐). 단일 메시지로.\n\n"
+        f"{raw}"
+    )
+    try:
+        text = await asyncio.to_thread(
+            claude_chat,
+            prompt,
+            session="weekly_preview",
+            system="너는 승호의 개인 비서. 다음 한 주 그림을 짧고 정확하게 보여줘.",
+            max_tokens=1000,
+        )
+        return text or ""
+    except Exception as e:
+        log.error("위클리 프리뷰 생성 실패: %s", e)
+        return f"다음주 미리보기.\n\n{raw}"
+
+
+def _is_in_active_meeting() -> bool:
+    """현재 시각이 캘린더의 timed 이벤트 중간이면 True (smart silence 판정용)."""
+    try:
+        from google_calendar import _fetch_events
+        from datetime import datetime, timedelta
+        now = datetime.now(KST)
+        events = _fetch_events(now - timedelta(hours=2), now + timedelta(hours=2))
+        for ev in events:
+            s = ev.get("start", {})
+            e = ev.get("end", {})
+            if "dateTime" not in s or "dateTime" not in e:
+                continue
+            from datetime import datetime as _dt
+            st = _dt.fromisoformat(s["dateTime"]).astimezone(KST)
+            en = _dt.fromisoformat(e["dateTime"]).astimezone(KST)
+            if st <= now < en:
+                return True
+    except Exception as e:
+        log.debug("미팅 상태 판정 실패: %s", e)
+    return False
+
+
+async def _send_or_queue(bot, chat_id: int, text: str) -> bool:
+    """미팅/포커스 중이면 큐에 쌓고, 아니면 즉시 발송. 반환값 = 발송 여부."""
+    from focus_mode import is_focus_active, queue_message
+    if is_focus_active() or _is_in_active_meeting():
+        try:
+            queue_message(text)
+        except Exception:
+            pass
+        log.info("smart silence — 알림 보류 (회의/포커스 중)")
+        return False
+    await bot.send_message(chat_id=chat_id, text=text)
+    return True
+
+
+async def scheduled_journal_prompt(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 22:30 KST — 오늘 어땠어? 짧게 묻기."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    msg = "오늘 어땠어? 한 줄이면 충분해."
+    sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, msg)
+    if sent:
+        await save_message(ALLOWED_CHAT_ID, "assistant", msg, "cli")
+
+
+async def scheduled_habit_prompt(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매일 21:00 KST — 오늘 안 한 기본 습관 1개씩만 묻기."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from habit_tracker import get_today_pending
+        pending = get_today_pending()
+        if not pending:
+            return
+        msg = f"오늘 {' / '.join(pending)} 했어? 안 했으면 알려줘 — 봇이 '약 먹었어' '운동 했어' 같이 말하면 자동 기록."
+        sent = await _send_or_queue(context.bot, ALLOWED_CHAT_ID, msg)
+        if sent:
+            await save_message(ALLOWED_CHAT_ID, "assistant", msg, "cli")
+    except Exception as e:
+        log.error("습관 prompt 실패: %s", e)
+
+
+async def scheduled_automation_poll(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """매 분 — 등록된 자동화 규칙 중 트리거 일치 시 실행."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    try:
+        from automations import run_due_automations
+        from claude_api import chat as claude_chat
+
+        async def send_async(text: str):
+            await _send_or_queue(context.bot, ALLOWED_CHAT_ID, text)
+            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+
+        async def claude_async(prompt: str) -> str:
+            return await asyncio.to_thread(
+                claude_chat,
+                prompt,
+                session="automation",
+                system="너는 비서. 사용자에게 보낼 짧고 실용적인 메시지를 만들어라. 이모지 금지.",
+                max_tokens=600,
+            )
+
+        await run_due_automations(send_async, claude_async)
+    except Exception as e:
+        log.error("automation poll 실패: %s", e)
+
+
+async def scheduled_weekly_preview(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """일요일 21:30 KST — 위클리 프리뷰."""
+    if ALLOWED_CHAT_ID == 0:
+        return
+    log.info("위클리 프리뷰 생성 시작")
+    try:
+        text = await _build_weekly_preview()
+        if text:
+            await context.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=text)
+            await save_message(ALLOWED_CHAT_ID, "assistant", text, "cli")
+            log.info("위클리 프리뷰 전송 완료")
+    except Exception as e:
+        log.error("위클리 프리뷰 실패: %s", e)
+
+
 # ─── 메인 ───────────────────────────────────────────────
 async def post_init(application) -> None:
-    """봇 시작 시 DB 초기화 + 컨텍스트 로딩."""
+    """봇 시작 시 DB 초기화 + 컨텍스트 로딩 + 대화 히스토리 복원."""
     await init_db()
     log.info("데이터베이스 초기화 완료")
     ctx = get_full_context()
     if ctx:
         log.info("사용자 컨텍스트 로딩 완료: %d자", len(ctx))
+
+    # 재시작 후에도 대화 연속성 유지 — DB에서 최근 40턴 복원
+    try:
+        if ALLOWED_CHAT_ID:
+            recent = await get_recent_messages(ALLOWED_CHAT_ID, limit=40)
+            if recent:
+                from claude_api import load_session_history
+                from gemini_client import SESSION_NAME
+                history = [{"role": m.role, "content": m.content} for m in recent]
+                load_session_history(SESSION_NAME, history)
+    except Exception as e:
+        log.warning("대화 히스토리 복원 실패: %s", e)
 
 
 def main() -> None:
@@ -320,12 +1136,69 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("clear", cmd_clear))
+    app.add_handler(CommandHandler("deep", cmd_deep))
+    app.add_handler(CommandHandler("casual", cmd_casual))
+    app.add_handler(CommandHandler("brief", cmd_brief))
+    app.add_handler(CommandHandler("preview", cmd_preview))
+    app.add_handler(CommandHandler("insights", cmd_insights))
+    app.add_handler(CommandHandler("voice", cmd_voice))
+    app.add_handler(CommandHandler("automation", cmd_automation))
+
+    # 인라인 버튼 콜백 (확인/취소)
+    app.add_handler(CallbackQueryHandler(cb_confirm, pattern=r"^confirm:"))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("todo", cmd_todo))
+    app.add_handler(CommandHandler("add", cmd_todo_add))
+    app.add_handler(CommandHandler("done", cmd_todo_done))
+    app.add_handler(CommandHandler("spend", cmd_spend))
+    app.add_handler(CommandHandler("expenses", cmd_expenses))
+    app.add_handler(CommandHandler("search", cmd_search))
+    app.add_handler(CommandHandler("schedule", cmd_schedule))
+    app.add_handler(CommandHandler("recall", cmd_recall))
+    app.add_handler(CommandHandler("focus", cmd_focus))
+    app.add_handler(CommandHandler("work", cmd_work))
+    app.add_handler(CommandHandler("exec", cmd_exec))
+    app.add_handler(CommandHandler("watch", cmd_watch))
+    app.add_handler(CommandHandler("condition", cmd_condition))
+    app.add_handler(CommandHandler("note", cmd_note))
 
     # 일반 메시지
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # 음성 메시지
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+
+    # 사진 메시지
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    # 매일 09:00 KST — 모닝 브리핑
+    app.job_queue.run_daily(
+        scheduled_morning_brief,
+        time=dt_time(hour=9, minute=0, tzinfo=KST),
+        name="morning_brief",
+    )
+
+    # 매일 21:00 KST — 습관 체크 prompt
+    app.job_queue.run_daily(
+        scheduled_habit_prompt,
+        time=dt_time(hour=21, minute=0, tzinfo=KST),
+        name="habit_prompt",
+    )
+
+    # 매일 22:30 KST — 저널 prompt ("오늘 어땠어?")
+    app.job_queue.run_daily(
+        scheduled_journal_prompt,
+        time=dt_time(hour=22, minute=30, tzinfo=KST),
+        name="journal_prompt",
+    )
+
+    # 매 분 — 자동화 규칙 폴링
+    app.job_queue.run_repeating(
+        scheduled_automation_poll,
+        interval=60, first=30, name="automation_poll",
+    )
 
     # 매일 23:00 KST — 대화 요약 + GitHub push
     app.job_queue.run_daily(
@@ -341,12 +1214,64 @@ def main() -> None:
         name="daily_checkin",
     )
 
+    # 매일 21:00 KST — 일일 다이제스트
+    app.job_queue.run_daily(
+        scheduled_digest,
+        time=dt_time(hour=21, minute=0, tzinfo=KST),
+        name="daily_digest",
+    )
+
+    # 매주 일요일 21:30 KST — 다음주 위클리 프리뷰
+    app.job_queue.run_daily(
+        scheduled_weekly_preview,
+        time=dt_time(hour=21, minute=30, tzinfo=KST),
+        days=(6,),
+        name="weekly_preview",
+    )
+
     # 매주 일요일 23:30 KST — 주간 기억 통합
     app.job_queue.run_daily(
         scheduled_consolidation,
         time=dt_time(hour=23, minute=30, tzinfo=KST),
         days=(6,),
         name="weekly_consolidation",
+    )
+
+    # 5분마다 미팅 사전 브리핑 체크
+    app.job_queue.run_repeating(
+        lambda ctx: asyncio.ensure_future(
+            meeting_check(ctx.bot, ALLOWED_CHAT_ID)
+        ),
+        interval=300, first=60, name="meeting_brief",
+    )
+
+    # 5분마다 출발 알림 체크 (위치 있는 이벤트 1시간 전)
+    app.job_queue.run_repeating(
+        scheduled_travel_alerts,
+        interval=300, first=90, name="travel_alerts",
+    )
+
+    # 3분마다 봇 헬스 체크
+    app.job_queue.run_repeating(
+        lambda ctx: asyncio.ensure_future(
+            health_check_and_notify(ctx.bot, ALLOWED_CHAT_ID)
+        ),
+        interval=180, first=30, name="bot_health",
+    )
+
+    # 15분마다 주식 가격 체크 (평일 9-16시)
+    async def stock_check(ctx):
+        from datetime import datetime
+        now = datetime.now(KST)
+        if now.weekday() < 5 and 9 <= now.hour < 16:
+            alerts = check_prices()
+            msg = format_alerts(alerts)
+            if msg:
+                await ctx.bot.send_message(chat_id=ALLOWED_CHAT_ID, text=msg)
+
+    app.job_queue.run_repeating(
+        stock_check,
+        interval=900, first=120, name="stock_alert",
     )
 
     # ─── Hevy 운동 통합 ───────────────────────────────
@@ -376,7 +1301,7 @@ def main() -> None:
         name="weekly_workout_report",
     )
 
-    log.info("산적 수다방 봇 시작! (Claude CLI)")
+    log.info("비서봇 시작! (Claude CLI + 12개 모듈 + Hevy)")
     app.run_polling(drop_pending_updates=True)
 
 

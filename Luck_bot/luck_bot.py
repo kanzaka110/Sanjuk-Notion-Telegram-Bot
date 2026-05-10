@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_config import claude_cli
 
 from saju_calendar import get_daily_analysis, get_week_analysis
+from google_calendar import get_calendar_context
 
 from telegram import Update
 from telegram.ext import (
@@ -79,9 +80,9 @@ SAJU_DATA = """
 - 황금기: 5월(최대 기회), 7월(두 번째 기회)
 
 [현재 상황]
-- 직업: 애니메이션 TA (Technical Artist) 지망
+- 직업: 시프트업(Shift Up) 애니메이션 TA (Technical Artist) 재직 중 (2026-04-13 입사)
 - 전직: 블루홀(크래프톤) 10년 애니메이션 팀장 → 2026.01 퇴직
-- 이직: 시프트업 스트라이프블레이드 면접 완료, 오퍼 대기 중
+- 현재: 수습 3개월 기간, 정상 출근 실무 근무 중. 구직 중 아님
 - 가족: 기혼, 아들 1명 (2014년생, 12세)
 - 건강: 양호하나 올해 화기 과다로 심장·눈·혈압 주의
 
@@ -124,17 +125,17 @@ SAJU_DATA = """
 # ─── 월별 운세 ───────────────────────────────────────────
 MONTHLY_FORTUNE = {
     1: {"간지": "庚寅", "등급": 3, "별점": "★★★☆☆",
-        "운세": "편인+식신. 이직 준비·학습 몰두에 좋은 달. 자기계발 집중"},
+        "운세": "편인+식신. 학습·자기계발 몰두에 좋은 달. 새로운 기술 습득 집중"},
     2: {"간지": "辛卯", "등급": 4, "별점": "★★★★☆",
-        "운세": "정인+상관. 면접·발표에 유리. 새로운 아이디어 돋보이는 시기. 말실수 주의"},
+        "운세": "정인+상관. 발표·기획에 유리. 새로운 아이디어 돋보이는 시기. 말실수 주의"},
     3: {"간지": "壬辰", "등급": 3, "별점": "★★★☆☆",
-        "운세": "비견+편관. 경쟁자 출현 가능. 강점을 명확히 어필해야 하는 달"},
+        "운세": "비견+편관. 경쟁자 출현 가능. 직장 내 강점을 명확히 어필해야 하는 달"},
     4: {"간지": "癸巳", "등급": 4, "별점": "★★★★☆",
         "운세": "겁재+정재. 가족여행에 좋은 기운. 소비 지출 크지만 즐거움도 큼"},
     5: {"간지": "甲午", "등급": 5, "별점": "★★★★★",
-        "운세": "식신+정재. 올해 최대 기회월. 취업 확정·계약 체결에 가장 유리. 투자는 보수적으로"},
+        "운세": "식신+정재. 올해 최대 기회월. 성과 인정·계약 체결에 가장 유리. 투자는 보수적으로"},
     6: {"간지": "乙未", "등급": 3, "별점": "★★★☆☆",
-        "운세": "상관+편관. 새 직장 적응기. 조직 내 갈등 소지 있으나 실력으로 극복"},
+        "운세": "상관+편관. 직장 적응·성장기. 조직 내 갈등 소지 있으나 실력으로 극복"},
     7: {"간지": "丙申", "등급": 5, "별점": "★★★★★",
         "운세": "편재+편인. 시주 申과 공명. 두 번째 기회월. 재물 유입 또는 보너스 가능"},
     8: {"간지": "丁酉", "등급": 4, "별점": "★★★★☆",
@@ -163,7 +164,9 @@ SYSTEM_PROMPT = f"""당신은 '나의 운세' — 전문 사주 상담가입니�
 - 사주 원국, 대운, 세운의 상호작용을 분석하여 답변합니다
 - 따뜻하면서도 솔직한 조언을 제공합니다 (무조건 좋은 말만 하지 않음)
 - 한자는 최소화하고 한글 풀이 중심으로 설명합니다
-- 건강, 재물, 직업, 인간관계, 이직, 면접 등 다양한 영역에 답변합니다
+- 건강, 재물, 직업, 인간관계, 직장 적응, 경력 성장 등 다양한 영역에 답변합니다
+- 사용자는 현재 시프트업에 재직 중(2026-04-13 입사, 수습 기간). 구직/취업/면접 관련 조언은 하지 않습니다
+- 직업운은 "현재 직장 적응·성장", "수습 통과", "직장 내 인간관계", "경력 발전" 관점으로 해석합니다
 
 ## 답변 스타일
 - 텔레그램 메시지에 맞게 간결하되 핵심은 빠짐없이
@@ -228,13 +231,16 @@ def _ask_chat_sync(chat_id: int, user_message: str) -> str:
     now = datetime.now(KST)
     date_info = f"\n현재: {now.strftime('%Y년 %m월 %d일 %A %H:%M')} KST"
     daily_analysis = get_daily_analysis(now.date())
+    cal_ctx = get_calendar_context("today")
+    cal_section = f"{cal_ctx}\n\n" if cal_ctx else ""
 
     context = "\n".join(history)
     prompt = (
         f"{month_context}{date_info}\n\n"
         f"━━━ 오늘의 일진 ━━━\n{daily_analysis}\n━━━━━━━━━━━━━━━\n\n"
+        f"{cal_section}"
         f"대화 기록:\n{context}\n\n"
-        f"위 대화의 마지막 사용자 메시지에 답변해주세요. 일진 데이터를 참고하여 답변하세요."
+        f"위 대화의 마지막 사용자 메시지에 답변해주세요. 일진 데이터와 오늘 일정을 참고하여 답변하세요."
     )
 
     try:
@@ -273,6 +279,9 @@ async def generate_daily_fortune() -> str:
     # 오늘의 일진 분석
     daily_analysis = get_daily_analysis(now.date())
 
+    # 오늘 캘린더 일정
+    cal_ctx = get_calendar_context("today")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {now.month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -284,9 +293,13 @@ async def generate_daily_fortune() -> str:
 {daily_analysis}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 오늘은 {now.year}년 {now.month}월 {now.day}일 {day_name}입니다.
 
 위 일진 데이터를 활용하여 오늘의 운세를 작성해주세요.
+Google Calendar 일정이 있으면, 각 일정에 맞춰 사주 관점의 조언을 덧붙여주세요.
+(예: 회의가 있으면 대인관계운과 연결, 마감이 있으면 업무운과 연결)
 
 ⚠️ 작성 규칙 (매우 중요):
 - 한자(漢字)를 절대 사용하지 마세요.
@@ -303,16 +316,17 @@ async def generate_daily_fortune() -> str:
 
 ☀️ {now.month}월 {now.day}일 {day_name} 운세
 
-그 다음:
+아래 8개 섹션을 반드시 빠짐없이 모두 포함해주세요:
 1. 오늘 하루 한줄평 (오늘을 한 문장으로 요약)
 2. 전체 흐름 (오늘 어떤 기운이 흐르는지 쉽게 3~4줄)
-3. 💼 일·커리어 (오늘 일할 때 참고할 점)
+3. 💼 일·커리어 (오늘 일할 때 참고할 점 — 반드시 포함!)
 4. 💰 돈·재물 (소비, 수입, 투자 관련)
 5. 💪 건강·컨디션 (몸 상태, 주의할 점)
 6. 👥 사람·관계 (주변 사람들과의 흐름)
 7. 🎯 오늘 이렇게 하세요 (바로 실천할 수 있는 구체적 팁 1~2개)
 8. 🍀 행운 포인트 (색상/방위/숫자)
 
+⚠️ 위 8개 항목 중 하나라도 빠지면 안 됩니다. 특히 💼 일·커리어는 필수입니다.
 따뜻하고 읽기 편하게 써주세요. 점쟁이 말투가 아니라 현실적이고 공감되는 조언으로."""
 
     return await ask_claude(prompt)
@@ -330,6 +344,9 @@ async def generate_weekly_fortune() -> str:
     # 이번 주 7일간 일진 흐름
     week_analysis = get_week_analysis(now.date())
 
+    # 이번 주 캘린더 일정
+    cal_ctx = get_calendar_context("week")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {now.month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -341,10 +358,13 @@ async def generate_weekly_fortune() -> str:
 {week_analysis}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 이번 주는 {week_start.month}월 {week_start.day}일 ~ {week_end.month}월 {week_end.day}일입니다.
 
 위 일진 데이터를 반드시 활용하여 주간 운세를 작성해주세요.
 각 요일의 십성·12운성·충합 관계를 근거로 요일별 강약을 분석해야 합니다.
+Google Calendar 일정이 있으면 요일별 운세에서 해당 일정과 사주 기운을 연결해 조언해주세요.
 
 첫 줄은 반드시 아래 타이틀로 시작:
 
@@ -375,6 +395,9 @@ async def generate_monthly_fortune() -> str:
     prev_data = MONTHLY_FORTUNE.get(month - 1 if month > 1 else 12, {})
     next_data = MONTHLY_FORTUNE.get(month + 1 if month < 12 else 1, {})
 
+    # 이번 달 캘린더 일정
+    cal_ctx = get_calendar_context("month")
+
     prompt = f"""{SYSTEM_PROMPT}
 
 ━━━ {now.year}년 {month}월 운세 ({month_data.get('간지', '')}월) ━━━
@@ -385,7 +408,11 @@ async def generate_monthly_fortune() -> str:
 다음달({next_data.get('간지', '')}월): {next_data.get('운세', '')}
 ━━━━━━━━━━━━━━━━━━━━━
 
+{cal_ctx}
+
 오늘은 {now.year}년 {month}월 1일, 새로운 달의 시작입니다.
+
+Google Calendar에 이번 달 일정이 있으면 주차별 운세에서 주요 일정과 사주 기운을 연결해 조언해주세요.
 
 아래 형식으로 이번 달 운세를 작성해주세요.
 첫 줄은 반드시 아래 타이틀로 시작:
