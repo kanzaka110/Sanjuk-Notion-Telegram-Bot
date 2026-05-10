@@ -224,6 +224,43 @@ ASSISTANT_TOOLS = [
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "get_recent_workouts",
+        "description": (
+            "Hevy 헬스 트래킹 — 최근 N건 워크아웃 요약. "
+            "사용자가 '어제/이번주 운동 어땠어?' '최근에 뭐 했지?' 물을 때 사용. "
+            "데이터 출처는 매일 04:00 KST 동기화되는 캐시 (당일 직후 운동은 누락 가능)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "조회할 워크아웃 수 (기본 5, 최대 15)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_workout_stats",
+        "description": (
+            "Hevy 운동 페이스 통계 — 이번주 횟수, 마지막 운동 후 경과일, 주간 목표(3회) 도달 여부. "
+            "'이번주 운동 잘 하고 있어?' '며칠 쉬었지?' 같은 질문이나 능동 독려 판단에 사용."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_workout_prs",
+        "description": (
+            "Hevy 신기록(PR) 히스토리 — 최근 갱신된 종목별 1RM 기록. "
+            "사용자가 '내 PR 뭐야?' '최근에 신기록 세웠어?' 물을 때 사용."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "최근 PR 행 수 (기본 10, 최대 30)"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "add_automation",
         "description": (
             "자동화 규칙 추가. trigger_type=daily_at(time HH:MM), weekly_at(weekday 0~6, time HH:MM), "
@@ -373,6 +410,66 @@ def _execute_tool(name: str, args: dict) -> str:
                 args["action_config"],
             )
             return f"자동화 #{rid} '{args['name']}' 등록 완료"
+
+        if name == "get_recent_workouts":
+            from hevy.analytics import format_workout_summary
+            from hevy.sync import load_cache
+            cache = load_cache()
+            workouts = cache.get("workouts") or []
+            if not workouts:
+                return "(Hevy 캐시 비어있음 — 04:00 sync 전이거나 운동 기록 없음)"
+            limit = max(1, min(int(args.get("limit", 5)), 15))
+            shown = workouts[:limit]
+            blocks = [format_workout_summary(w) for w in shown]
+            synced = cache.get("synced_at", "?")
+            return f"(캐시 기준 {synced})\n\n" + "\n\n".join(blocks)
+
+        if name == "get_workout_stats":
+            from datetime import datetime, timedelta, timezone
+            from hevy.analytics import (
+                WEEKLY_THRESHOLD,
+                count_workouts_in_week,
+                days_since_last_workout,
+            )
+            from hevy.sync import load_cache
+            kst = timezone(timedelta(hours=9))
+            now = datetime.now(kst)
+            cache = load_cache()
+            workouts = cache.get("workouts") or []
+            if not workouts:
+                return "(Hevy 운동 기록 없음)"
+            week_n = count_workouts_in_week(workouts, now, kst)
+            since = days_since_last_workout(workouts, now)
+            since_str = "오늘" if since == 0 else f"{since}일 전" if since < 999 else "기록 없음"
+            status = "✅ 주간 목표 달성" if week_n >= WEEKLY_THRESHOLD else f"⚠️ 목표({WEEKLY_THRESHOLD}회) 미달"
+            return (
+                f"이번주 {week_n}회 ({status})\n"
+                f"마지막 운동: {since_str}\n"
+                f"캐시 기준: {cache.get('synced_at', '?')}"
+            )
+
+        if name == "get_workout_prs":
+            import sqlite3
+            from hevy.sync import DEFAULT_DB_PATH
+            if not DEFAULT_DB_PATH.exists():
+                return "(PR 기록 DB 없음 — sync 미실행)"
+            limit = max(1, min(int(args.get("limit", 10)), 30))
+            with sqlite3.connect(DEFAULT_DB_PATH) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT detected_at, exercise, weight_kg, reps, workout_when
+                      FROM pr_history
+                     ORDER BY id DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            if not rows:
+                return "(PR 기록 없음)"
+            lines = [f"최근 PR {len(rows)}건:"]
+            for detected, ex, w, r, when in rows:
+                date_part = (when or detected or "")[:10]
+                lines.append(f"  - [{date_part}] {ex}: {w:g}kg × {r}")
+            return "\n".join(lines)
 
         return f"(알 수 없는 도구: {name})"
     except Exception as e:

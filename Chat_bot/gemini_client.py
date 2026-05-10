@@ -88,6 +88,9 @@ class GeminiClient:
                 "- get_todos(): 미완료 할일\n"
                 "- web_search(query): 인터넷 검색\n"
                 "- get_gcp_status(): 봇/시스템 상태\n"
+                "- get_recent_workouts(limit): 최근 Hevy 운동 요약\n"
+                "- get_workout_stats(): 이번주 운동 횟수/마지막 운동/주간 목표 달성 여부\n"
+                "- get_workout_prs(limit): 최근 신기록(PR) 히스토리\n"
                 "사용자 질문에 정확히 답하려면 관련 도구를 능동적으로 호출해. "
                 "도구 결과로 답하고, 도구가 필요 없는 일상 대화는 그냥 답해."
             )
