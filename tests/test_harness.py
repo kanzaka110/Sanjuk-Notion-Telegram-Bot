@@ -7,6 +7,19 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent
+EXCLUDED_SOURCE_DIRS = {"venv", ".venv", "__pycache__", ".git", "data"}
+EXCLUDED_SOURCE_PATHS = {"Chat_bot/data"}
+
+
+def iter_project_py_files():
+    for py_file in PROJECT_ROOT.rglob("*.py"):
+        rel_parts = py_file.relative_to(PROJECT_ROOT).parts
+        rel_path = "/".join(rel_parts)
+        if any(part in EXCLUDED_SOURCE_DIRS for part in rel_parts):
+            continue
+        if any(rel_path == path or rel_path.startswith(f"{path}/") for path in EXCLUDED_SOURCE_PATHS):
+            continue
+        yield py_file
 
 SECRET_PATTERNS = [
     re.compile(r'sk-ant-[a-zA-Z0-9_-]{20,}'),
@@ -41,8 +54,8 @@ class TestNoHardcodedSecrets:
 
     def test_no_secrets_in_source(self):
         violations = []
-        for py_file in PROJECT_ROOT.rglob("*.py"):
-            if "test_" in py_file.name or "__pycache__" in str(py_file):
+        for py_file in iter_project_py_files():
+            if "test_" in py_file.name:
                 continue
             content = py_file.read_text(encoding="utf-8", errors="ignore")
             for pattern in SECRET_PATTERNS:
@@ -73,9 +86,7 @@ class TestPythonSyntax:
 
     def test_all_py_files_valid(self):
         errors = []
-        for py_file in PROJECT_ROOT.rglob("*.py"):
-            if "__pycache__" in str(py_file):
-                continue
+        for py_file in iter_project_py_files():
             try:
                 source = py_file.read_text(encoding="utf-8", errors="ignore")
                 ast.parse(source)

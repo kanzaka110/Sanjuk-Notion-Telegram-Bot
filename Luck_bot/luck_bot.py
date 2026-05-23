@@ -214,7 +214,7 @@ def get_month_context() -> str:
 async def ask_claude(prompt: str) -> str:
     """Claude CLI 비동기 래핑 — 이벤트 루프 차단 방지."""
     result = await asyncio.to_thread(
-        claude_cli, prompt, model="sonnet", timeout=120,
+        claude_cli, prompt, model="sonnet", timeout=240,
     )
     return result or "운세 생성 중 오류가 발생했습니다."
 

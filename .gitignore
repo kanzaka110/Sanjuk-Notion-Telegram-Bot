@@ -32,3 +32,16 @@ Thumbs.db
 gcp-ssh.cmd
 scripts/claude-config-push.cmd
 scripts/claude-config-pull.cmd
+# Runtime/local bot state
+.claude/settings.local.json
+venv/
+data/
+Chat_bot/data/
+Chat_bot/hevy/data/
+*.sqlite
+*.sqlite-*
+*.db-*
+calendar_token*.json
+client_secret.json
+calendar_token*.json*
+client_secret*.json

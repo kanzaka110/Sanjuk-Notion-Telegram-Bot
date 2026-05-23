@@ -207,3 +207,27 @@ def refresh_context() -> str:
     _cached_context = None
     _cache_timestamp = 0
     return get_full_context()
+
+
+# ─── 경량 컨텍스트 (세션 유지 모드용) ──────────────────
+_cached_essential: str | None = None
+_essential_timestamp: float = 0
+ESSENTIAL_REFRESH_INTERVAL = 30 * 60  # 30분마다 갱신
+
+
+def get_essential_context() -> str:
+    """세션 유지 모드용 경량 컨텍스트 (캘린더 + 할일만)."""
+    global _cached_essential, _essential_timestamp
+
+    now = time.time()
+    if _cached_essential is not None and (now - _essential_timestamp) < ESSENTIAL_REFRESH_INTERVAL:
+        return _cached_essential
+
+    calendar = load_calendar_context()
+    todo = load_todo_context()
+
+    parts = [p for p in [calendar, todo] if p]
+    _cached_essential = "\n\n".join(parts) if parts else ""
+    _essential_timestamp = now
+
+    return _cached_essential

@@ -45,6 +45,7 @@ from work_timer import start_work, stop_work, get_today_report as work_today_rep
 from remote_exec import handle_exec
 from condition_tracker import log_condition, get_summary as condition_summary
 from intent_router import detect_intent_async, execute_intent
+from correction_guard import apply_user_correction, get_filtered_todo_context, get_suppression_context
 
 from config import ALLOWED_CHAT_ID, KST, TELEGRAM_BOT_TOKEN
 from database import (
@@ -481,7 +482,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "비서봇 도움말\n\n"
         "-- 기본 --\n"
-        "/status /clear /refresh\n\n"
+        "/status /clear /refresh /help\n\n"
         "-- 할일 --\n"
         "/todo /add 내용 /done 번호\n\n"
         "-- 지출 --\n"
@@ -641,6 +642,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.chat.send_action("typing")
     action_context = ""
 
+    # 0-guard. 사용자가 정정/반복 금지를 말하면 원인 데이터를 먼저 정리
+    correction_msg = apply_user_correction(user_text)
+    if correction_msg:
+        await save_message(chat_id, "user", user_text, "cli")
+        await update.message.reply_text(correction_msg)
+        await save_message(chat_id, "assistant", correction_msg, "cli")
+        return
+
     # 0-pre. 직전 turn에 pending action 있으면 사용자 응답으로 confirm/deny 판정
     pending = context.user_data.get("pending_action")
     if pending:
@@ -799,13 +808,15 @@ async def _build_morning_brief() -> str:
     today_str = datetime.now(KST).strftime("%-m/%-d (%a)")
     today_cal = get_today_schedule()
     upcoming = get_week_schedule(days=3)
-    todos = get_todo_context() or "할일 없음"
+    todos = get_filtered_todo_context() or "할일 없음"
+    suppression = get_suppression_context()
 
     raw = (
         f"=== 모닝 브리핑 데이터 ({today_str}) ===\n\n"
         f"[오늘 일정]\n{today_cal}\n\n"
         f"[앞으로 3일 일정]\n{upcoming}\n\n"
-        f"[할일]\n{todos}"
+        f"[할일]\n{todos}\n\n"
+        f"[반복 금지/사용자 정정]\n{suppression or '없음'}"
     )
 
     prompt = (
@@ -963,14 +974,16 @@ async def _build_weekly_preview() -> str:
     conflicts = find_conflicts(next_events)
 
     week_text = get_week_schedule(days=14)
-    todos = get_todo_context() or "할일 없음"
+    todos = get_filtered_todo_context() or "할일 없음"
+    suppression = get_suppression_context()
 
     raw = (
         f"=== 다음주 미리보기 데이터 ({next_week_start.strftime('%-m/%-d')} ~ {(next_week_end - timedelta(days=1)).strftime('%-m/%-d')}) ===\n\n"
         f"[다음주 + 그 다음주 일정]\n{week_text}\n\n"
         f"[다음주 일정 수: {len(next_events)}건]\n"
         f"[충돌 감지: {len(conflicts)}건]\n\n"
-        f"[현재 미완료 할일]\n{todos}"
+        f"[현재 미완료 할일]\n{todos}\n\n"
+        f"[반복 금지/사용자 정정]\n{suppression or '없음'}"
     )
 
     prompt = (

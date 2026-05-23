@@ -13,7 +13,8 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import timedelta, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
 from dotenv import load_dotenv
@@ -91,14 +92,19 @@ def claude_cli(
     if effort:
         cmd += ["--effort", effort]
 
+    # ANTHROPIC_API_KEY가 설정되면 CLI가 Max 구독 대신 API 키를 사용하므로 제거
+    env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
+            cmd, capture_output=True, text=True, timeout=timeout, env=env,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-        log.warning("Claude CLI 실패: returncode=%d, stderr=%s",
-                    result.returncode, result.stderr[:200] if result.stderr else "")
+        error_detail = (result.stderr.strip() or result.stdout.strip()
+                        or "알 수 없는 오류")
+        log.warning("Claude CLI 실패: returncode=%d, error=%s",
+                    result.returncode, error_detail[:300])
         return ""
     except subprocess.TimeoutExpired:
         log.warning("Claude CLI 타임아웃 (%d초)", timeout)
@@ -108,6 +114,89 @@ def claude_cli(
         return ""
     except Exception as e:
         log.warning("Claude CLI 오류: %s", e)
+        return ""
+
+
+# ─── 세션 관리 ─────────────────────────────────────────
+_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+_active_sessions: dict[str, str] = {}  # bot_name → session_id
+
+
+def _get_daily_session_id(bot_name: str) -> str:
+    """날짜 기반 세션 ID를 반환한다 (하루 1세션)."""
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    return str(uuid.uuid5(_NAMESPACE, f"{bot_name}-{today}"))
+
+
+def claude_cli_session(
+    prompt: str,
+    *,
+    bot_name: str = "default",
+    model: str = "sonnet",
+    system_prompt: str = "",
+    timeout: int = 90,
+    tools: str = "WebSearch,WebFetch,Read",
+) -> str:
+    """세션 유지형 Claude CLI 호출 (멀티턴 대화 + 도구).
+
+    첫 호출은 --session-id로 새 세션 생성,
+    이후 호출은 --resume로 세션 이어가기.
+
+    Args:
+        prompt: 사용자 프롬프트
+        bot_name: 봇 이름 (세션 구분용)
+        model: 모델 선택
+        system_prompt: 시스템 프롬프트 (첫 호출에만 적용)
+        timeout: 타임아웃 (초)
+        tools: 허용할 도구 (쉼표 구분)
+
+    Returns:
+        CLI 응답 텍스트. 실패 시 빈 문자열.
+    """
+    session_id = _get_daily_session_id(bot_name)
+    is_resumed = session_id in _active_sessions
+
+    cmd = [CLAUDE_CLI, "-p", prompt, "--model", model,
+           "--disable-slash-commands"]
+
+    if tools:
+        cmd += ["--allowedTools", tools]
+
+    if is_resumed:
+        cmd += ["--resume", session_id]
+    else:
+        cmd += ["--session-id", session_id]
+        if system_prompt:
+            cmd += ["--system-prompt", system_prompt]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            _active_sessions[bot_name] = session_id
+            return result.stdout.strip()
+
+        stderr = result.stderr[:300] if result.stderr else ""
+        # 세션 충돌 시 resume으로 재시도
+        if "already in use" in stderr and not is_resumed:
+            _active_sessions[bot_name] = session_id
+            return claude_cli_session(
+                prompt, bot_name=bot_name, model=model,
+                system_prompt=system_prompt, timeout=timeout,
+            )
+        log.warning("Claude CLI 세션 실패: rc=%d, stderr=%s",
+                    result.returncode, stderr)
+        return ""
+    except subprocess.TimeoutExpired:
+        log.warning("Claude CLI 세션 타임아웃 (%d초)", timeout)
+        _active_sessions[bot_name] = session_id
+        return ""
+    except FileNotFoundError:
+        log.error("Claude CLI를 찾을 수 없습니다: %s", CLAUDE_CLI)
+        return ""
+    except Exception as e:
+        log.warning("Claude CLI 세션 오류: %s", e)
         return ""
 
 

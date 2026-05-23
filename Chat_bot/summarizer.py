@@ -6,8 +6,9 @@
 
 import asyncio
 import logging
+import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from github import Github, GithubException
@@ -201,8 +202,82 @@ async def run_weekly_consolidation(chat_id: int) -> list[dict] | None:
         return None
 
 
+def scan_memory_changes() -> str:
+    """당일 변경된 모든 프로젝트의 메모리 파일을 스캔하여 요약 텍스트를 반환한다."""
+    from config import KST
+
+    # kanzaka110(서비스 유저)와 ohmil(주 유저) 양쪽 메모리를 스캔
+    bases = []
+    for home in (Path.home(), Path("/home/ohmil")):
+        candidate = home / ".claude" / "projects"
+        if candidate.exists() and candidate not in bases:
+            bases.append(candidate)
+    if not bases:
+        return ""
+
+    now = datetime.now(KST)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_ts = today_start.timestamp()
+
+    # 프로젝트별 변경 파일 수집
+    seen_dirs: set[str] = set()
+    project_changes: dict[str, list[str]] = {}
+    for base in bases:
+        for memory_dir in sorted(base.glob("*/memory")):
+            if str(memory_dir) in seen_dirs:
+                continue
+            seen_dirs.add(str(memory_dir))
+            project_key = memory_dir.parent.name
+            # 경로에서 프로젝트 이름 추출
+            parts = project_key.split("-")
+            meaningful = [p for p in parts if p and p not in ("home", "ohmil", "kanzaka110", "C", "", "dev")]
+            display_name = "-".join(meaningful) if meaningful else project_key
+
+            changed_files = []
+            for md_file in memory_dir.glob("*.md"):
+                if md_file.name == "MEMORY.md":
+                    continue
+                if md_file.stat().st_mtime >= today_ts:
+                    try:
+                        text = md_file.read_text(encoding="utf-8")
+                        name = md_file.stem
+                        for line in text.split("\n"):
+                            if line.startswith("name:"):
+                                name = line.split(":", 1)[1].strip()
+                                break
+                            if line == "---" and name != md_file.stem:
+                                break
+                        desc = ""
+                        for line in text.split("\n"):
+                            if line.startswith("description:"):
+                                desc = line.split(":", 1)[1].strip()
+                                break
+                        entry = f"  - {name}"
+                        if desc:
+                            entry += f": {desc[:60]}"
+                        changed_files.append(entry)
+                    except Exception:
+                        changed_files.append(f"  - {md_file.stem}")
+
+            if changed_files:
+                project_changes[display_name] = changed_files
+
+    if not project_changes:
+        return ""
+
+    lines = ["[오늘 메모리 변경]"]
+    total = 0
+    for proj, files in project_changes.items():
+        lines.append(f"{proj} ({len(files)}건):")
+        lines.extend(files)
+        total += len(files)
+    lines.insert(1, f"총 {total}건 변경/생성")
+
+    return "\n".join(lines)
+
+
 async def generate_daily_digest() -> str | None:
-    """일일 다이제스트를 생성한다 (캘린더 + 할일 + GCP + 대화 요약)."""
+    """일일 다이제스트를 생성한다 (캘린더 + 할일 + GCP + 메모리 + 대화 요약)."""
     parts = []
 
     # 캘린더
@@ -256,6 +331,14 @@ async def generate_daily_digest() -> str | None:
         work = get_today_report()
         if work and "없음" not in work:
             parts.append(work)
+    except Exception:
+        pass
+
+    # 메모리 변경
+    try:
+        memory_changes = scan_memory_changes()
+        if memory_changes:
+            parts.append(memory_changes)
     except Exception:
         pass
 

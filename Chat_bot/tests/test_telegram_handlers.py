@@ -186,8 +186,8 @@ class TestMultiBubble:
         result = _split_into_bubbles("짧은 응답")
         assert len(result) == 1
 
-    def test_paragraph_split(self) -> None:
-        """문단 구분으로 분리."""
+    def test_paragraph_under_limit_no_split(self) -> None:
+        """4000자 이하 응답은 문단이 있어도 단일 메시지로 전송."""
         from chat_bot import _split_into_bubbles
 
         text = (
@@ -196,15 +196,24 @@ class TestMultiBubble:
             "두 번째 문단입니다. 역시 충분한 길이를 확보합니다. 테스트를 위한 텍스트입니다."
         )
         result = _split_into_bubbles(text)
-        assert len(result) == 2
+        assert result == [text.strip()]
 
-    def test_long_text_splits_into_bubbles(self) -> None:
-        """긴 텍스트는 2-3개로 분리."""
+    def test_long_text_under_limit_no_split(self) -> None:
+        """4000자 이하 긴 텍스트도 단일 메시지로 유지."""
         from chat_bot import _split_into_bubbles
 
         text = "\n".join([f"줄 {i}: 이것은 테스트 텍스트입니다." for i in range(10)])
         result = _split_into_bubbles(text)
-        assert 2 <= len(result) <= 3
+        assert result == [text]
+
+    def test_over_telegram_limit_splits_safely(self) -> None:
+        """4000자 초과 시에만 안전하게 분리."""
+        from chat_bot import TELEGRAM_MAX_LEN, _split_into_bubbles
+
+        text = ("가" * 3900) + "\n" + ("나" * 300)
+        result = _split_into_bubbles(text)
+        assert len(result) == 2
+        assert all(len(part) <= TELEGRAM_MAX_LEN for part in result)
 
     @pytest.mark.asyncio
     async def test_send_bubbles_multiple(self) -> None:
@@ -306,6 +315,26 @@ class TestHandleMessage:
         mock_recent.assert_not_called()
         # 플래그 리셋됨
         assert context.user_data["clear_context"] is False
+
+
+    @pytest.mark.asyncio
+    async def test_user_correction_short_circuits_llm(self) -> None:
+        """사용자 정정 발화는 LLM으로 넘기지 않고 데이터 정리 응답을 즉시 반환."""
+        from chat_bot import handle_message, gemini
+
+        update = _make_update(chat_id=ALLOWED_CHAT_ID, text="강아지 만나는건 이미 끝났다고 몇번 말했어")
+        context = _make_context()
+
+        with (
+            patch("chat_bot.apply_user_correction", return_value="정리했어."),
+            patch("chat_bot.save_message", new_callable=AsyncMock) as mock_save,
+            patch.object(gemini, "ask", new_callable=AsyncMock) as mock_ask,
+        ):
+            await handle_message(update, context)
+
+        mock_ask.assert_not_called()
+        update.message.reply_text.assert_called_once_with("정리했어.")
+        assert mock_save.call_count == 2
 
     @pytest.mark.asyncio
     async def test_fallback_notice_sent_first(self) -> None:

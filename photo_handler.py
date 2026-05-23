@@ -26,27 +26,27 @@ def analyze_image(image_path: str, user_prompt: str = "") -> str:
     Returns:
         분석 결과 텍스트
     """
-    if not user_prompt:
-        user_prompt = "이 이미지를 분석해줘. 영수증이면 항목과 금액을 추출하고, 문서면 내용을 요약하고, 스크린샷이면 무엇을 보여주는지 설명해줘."
+    default_instruction = (
+        "이 이미지를 분석해줘. 영수증이면 항목과 금액을 추출하고, "
+        "문서면 내용을 요약하고, 스크린샷이면 무엇을 보여주는지 설명해줘."
+    )
+    prompt = f"{image_path} {user_prompt or default_instruction}"
 
     try:
-        # Claude CLI에 이미지 파일을 파이프로 전달
         cmd = [
-            CLAUDE_CLI, "-p", user_prompt,
+            CLAUDE_CLI, "-p", prompt,
             "--model", "sonnet",
             "--disable-slash-commands",
             "--no-session-persistence",
+            "--allowedTools", "Read",
         ]
 
-        # stdin으로 이미지 데이터 전달
-        with open(image_path, "rb") as img_file:
-            result = subprocess.run(
-                cmd,
-                stdin=img_file,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
 
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
