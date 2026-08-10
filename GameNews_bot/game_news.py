@@ -56,8 +56,9 @@ def fetch_news(now: datetime | None = None) -> str:
 검색어 5: 신작 게임 출시 {target_dot}
 검색어 6: e스포츠 대회 결과 {target_dot}
 검색어 7: Steam 인기 게임 {target_dot}
-검색어 8: 시프트업 김형태 스텔라블레이드 {target_dot}
-검색어 9: SHIFT UP Stellar Blade {target_iso}
+검색어 8: 시프트업 김형태 스텔라블레이드 블러드레인 {target_dot}
+검색어 9: SHIFT UP Stellar Blade Blood Rain {target_iso}
+검색어 10: 액션RPG 신작 출시 경쟁작 {target_dot}
 
 각 검색 결과마다 반드시 아래 형식으로 작성하세요. 최소 15개 이상 기사를 나열해주세요:
 
@@ -122,7 +123,7 @@ def summarize_news(gathered_text: str, now: datetime | None = None) -> str:
 - 게시일이 {target_iso}인 기사만 포함. 그 외 날짜는 전부 제외
 - 날짜 불명 기사도 제외
 - 한국어, 게임회사/게임 카테고리는 최대 5개
-- ⭐ 시프트업 섹션: 시프트업, 김형태 대표, 스텔라 블레이드 관련 기사. 없으면 "관련 기사 없음"
+- ⭐ 시프트업 섹션: 시프트업, 김형태 대표, 스텔라 블레이드, 블러드레인(Blood Rain), SB2 관련 기사. 없으면 "관련 기사 없음"
 - 수집된 기사가 1개라도 있으면 반드시 출력. 생략하지 말 것
 - 제목만 한 줄로 (요약 불필요)
 - 각 기사 사이에 반드시 빈 줄 하나
