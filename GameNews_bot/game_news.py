@@ -16,9 +16,9 @@ import requests
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
-# 정식 브리핑 모델 router 로드
+# shared_config에서 Claude CLI 유틸리티 로드
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from briefing_model_router import briefing_model_session, route_current
+from shared_config import claude_cli
 
 # ─── 설정 ──────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("GAME_NEWS_BOT_TOKEN", os.environ.get("TELEGRAM_BOT_TOKEN", ""))
@@ -77,7 +77,7 @@ URL: [실제 기사 URL — 검색 결과의 원본 링크 그대로]
 - URL은 반드시 실제 검색에서 나온 원본 링크. URL을 만들어내지 마세요
 - 제목과 URL이 반드시 같은 기사를 가리켜야 합니다"""
 
-    result = route_current("GAME_PUBLIC_EVIDENCE", gather_prompt)
+    result = claude_cli(gather_prompt, model="opus", web_search=True, timeout=600, effort="max")
     return result or "(검색 결과 없음)"
 
 
@@ -133,15 +133,7 @@ def summarize_news(gathered_text: str, now: datetime | None = None) -> str:
 - URL이 없는 뉴스는 제외
 - 중복 제거"""
 
-    analysis = route_current(
-        "GAME_PUBLIC_ANALYSIS",
-        "다음 공개 게임 기사 근거에서 시장 반응, 과장 가능성, 반대 관점을 분석하세요. "
-        "입력에 없는 사실이나 URL을 만들지 마세요.\n\n" + gathered_text[:12000],
-    )
-    raw = route_current(
-        "GAME_PUBLIC_EDITORIAL",
-        prompt + "\n\n## 공개 반응 분석\n" + analysis[:4000],
-    )
+    raw = claude_cli(prompt, model="sonnet", timeout=300)
     if not raw:
         return "뉴스 정리에 실패했습니다."
     # <a> 태그 내 텍스트의 HTML 특수문자 이스케이프
@@ -187,22 +179,24 @@ def main():
     print(f"🕐 {now.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print(f"{'='*50}\n")
 
-    with briefing_model_session("GAME_NEWS"):
-        print("🔍 Perplexity로 공개 게임 뉴스 근거 수집...")
-        gathered = fetch_news()
-        print(f"  → 수집 완료 ({len(gathered)}자)\n")
+    # 1. Claude CLI로 뉴스 수집
+    print("🔍 Claude CLI + WebSearch로 게임 뉴스 수집...")
+    gathered = fetch_news()
+    print(f"  → 수집 완료 ({len(gathered)}자)\n")
 
-        if not gathered or gathered == "(검색 결과 없음)":
-            print("❌ 뉴스를 찾지 못했습니다.")
-            send_telegram("오늘은 수집된 게임 뉴스가 없습니다.")
-            return
+    if not gathered or gathered == "(검색 결과 없음)":
+        print("❌ 뉴스를 찾지 못했습니다.")
+        send_telegram("오늘은 수집된 게임 뉴스가 없습니다.")
+        return
 
-        print("🤖 Grok 분석 + Codex 편집 중...")
-        summary = summarize_news(gathered)
-        print(f"  → 정리 완료 ({len(summary)}자)\n")
+    # 2. Claude CLI로 정리
+    print("🤖 Claude CLI로 정리 중...")
+    summary = summarize_news(gathered)
+    print(f"  → 정리 완료 ({len(summary)}자)\n")
 
-        print("📨 텔레그램 전송...")
-        send_telegram(summary)
+    # 3. 텔레그램 전송
+    print("📨 텔레그램 전송...")
+    send_telegram(summary)
 
     print(f"\n{'='*50}")
     print("  ✅ 게임뉴스 브리핑 완료!")

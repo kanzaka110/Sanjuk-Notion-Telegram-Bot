@@ -20,7 +20,6 @@ from pathlib import Path
 # shared_config에서 Claude CLI 유틸리티 로드
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_config import claude_cli
-from briefing_model_router import briefing_model_session, route_current
 
 from saju_calendar import get_daily_analysis, get_week_analysis
 from google_calendar import get_calendar_context
@@ -212,14 +211,11 @@ def get_month_context() -> str:
 
 
 # ─── Claude CLI (정기 브리핑용) ────────────────────────────
-async def ask_claude(prompt: str, *, scheduled: bool = False) -> str:
+async def ask_claude(prompt: str) -> str:
     """Claude CLI 비동기 래핑 — 이벤트 루프 차단 방지."""
-    if scheduled:
-        result = await asyncio.to_thread(route_current, "LUCK_PRIVATE_FINAL", prompt)
-    else:
-        result = await asyncio.to_thread(
-            claude_cli, prompt, model="sonnet", timeout=240,
-        )
+    result = await asyncio.to_thread(
+        claude_cli, prompt, model="sonnet", timeout=240,
+    )
     return result or "운세 생성 중 오류가 발생했습니다."
 
 
@@ -274,7 +270,7 @@ async def ask_chat(chat_id: int, user_message: str) -> str:
 #  정기 운세 브리핑 생성 (Claude Sonnet)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def generate_daily_fortune(*, scheduled: bool = False) -> str:
+async def generate_daily_fortune() -> str:
     """매일 아침 자동 전송용 일간 운세 (Claude Sonnet)."""
     now = datetime.now(KST)
     month_data = MONTHLY_FORTUNE.get(now.month, {})
@@ -333,10 +329,10 @@ Google Calendar 일정이 있으면, 각 일정에 맞춰 사주 관점의 조�
 ⚠️ 위 8개 항목 중 하나라도 빠지면 안 됩니다. 특히 💼 일·커리어는 필수입니다.
 따뜻하고 읽기 편하게 써주세요. 점쟁이 말투가 아니라 현실적이고 공감되는 조언으로."""
 
-    return await ask_claude(prompt, scheduled=scheduled)
+    return await ask_claude(prompt)
 
 
-async def generate_weekly_fortune(*, scheduled: bool = False) -> str:
+async def generate_weekly_fortune() -> str:
     """매주 월요일 자동 전송용 주간 운세 (Claude Sonnet)."""
     now = datetime.now(KST)
     month_data = MONTHLY_FORTUNE.get(now.month, {})
@@ -386,10 +382,10 @@ Google Calendar 일정이 있으면 요일별 운세에서 해당 일정과 사�
 
 일간 운세보다 넓은 시야로 한 주를 조망하되, 일진 근거를 반드시 곁들여주세요."""
 
-    return await ask_claude(prompt, scheduled=scheduled)
+    return await ask_claude(prompt)
 
 
-async def generate_monthly_fortune(*, scheduled: bool = False) -> str:
+async def generate_monthly_fortune() -> str:
     """매월 1일 자동 전송용 월간 운세 (Claude Sonnet)."""
     now = datetime.now(KST)
     month = now.month
@@ -438,7 +434,7 @@ Google Calendar에 이번 달 일정이 있으면 주차별 운세에서 주요 
 일간·주간 운세보다 훨씬 깊고 넓은 시야로 한 달을 조망하는 관점에서 작성해주세요.
 사주 근거를 충분히 제시하되 텔레그램 메시지에 적합한 분량으로 작성해주세요."""
 
-    return await ask_claude(prompt, scheduled=scheduled)
+    return await ask_claude(prompt)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -458,7 +454,7 @@ async def send_long_message(bot, chat_id: int, text: str) -> None:
 #  스케줄러 콜백
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> None:
+async def scheduled_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
     """매일 08:00 KST — 일간 운세 전송."""
     now = datetime.now(KST)
 
@@ -466,7 +462,7 @@ async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> None:
     if now.weekday() == 0:  # Monday
         try:
             log.info("📅 주간 운세 생성 시작 (Claude Sonnet)...")
-            weekly = await generate_weekly_fortune(scheduled=True)
+            weekly = await generate_weekly_fortune()
             await send_long_message(context.bot, ALLOWED_CHAT_ID, weekly)
             log.info("📅 주간 운세 전송 완료")
         except Exception as e:
@@ -476,7 +472,7 @@ async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> None:
     if now.day == 1:
         try:
             log.info("🌙 월간 운세 생성 시작 (Claude Sonnet)...")
-            monthly = await generate_monthly_fortune(scheduled=True)
+            monthly = await generate_monthly_fortune()
             await send_long_message(context.bot, ALLOWED_CHAT_ID, monthly)
             log.info("🌙 월간 운세 전송 완료")
         except Exception as e:
@@ -485,17 +481,11 @@ async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> None:
     # 일간 운세는 항상 전송
     try:
         log.info("☀️ 일간 운세 생성 시작 (Claude Sonnet)...")
-        daily = await generate_daily_fortune(scheduled=True)
+        daily = await generate_daily_fortune()
         await send_long_message(context.bot, ALLOWED_CHAT_ID, daily)
         log.info("☀️ 일간 운세 전송 완료")
     except Exception as e:
         log.error(f"일간 운세 전송 실패: {e}")
-
-
-async def scheduled_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """정식 예약 운세만 private model session으로 실행."""
-    with briefing_model_session("LUCK"):
-        await _scheduled_daily_body(context)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
