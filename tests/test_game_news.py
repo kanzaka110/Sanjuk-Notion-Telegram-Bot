@@ -54,12 +54,12 @@ class TestFetchNewsPrompt:
         target_iso = "2026-05-23"
         today_iso = "2026-05-24"
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "mock result"
             from GameNews_bot.game_news import fetch_news
             fetch_news(now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             # target_date가 프롬프트에 포함
             assert target_iso in prompt
             # 당일(2026-05-24)이 필터 날짜로 사용되지 않음
@@ -71,12 +71,12 @@ class TestFetchNewsPrompt:
         """프롬프트에 오래된 기사 제외 지시가 포함."""
         now = datetime(2026, 5, 24, 9, 15, 0, tzinfo=KST)
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "mock result"
             from GameNews_bot.game_news import fetch_news
             fetch_news(now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             assert "절대 포함하지 마세요" in prompt
             assert "제외" in prompt
 
@@ -84,12 +84,12 @@ class TestFetchNewsPrompt:
         """검색어에 target_date ISO가 포함."""
         now = datetime(2026, 5, 24, 9, 15, 0, tzinfo=KST)
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "mock result"
             from GameNews_bot.game_news import fetch_news
             fetch_news(now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             assert "게임 뉴스 2026-05-23" in prompt
             assert "2026.05.23" in prompt
 
@@ -103,12 +103,12 @@ class TestSummarizeNewsPrompt:
         target_iso = "2026-05-23"
         today_iso = "2026-05-24"
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "요약 결과"
             from GameNews_bot.game_news import summarize_news
             summarize_news("테스트 기사 데이터", now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             assert f"게시일이 정확히 {target_iso}" in prompt
             assert f"게시일이 {today_iso}인 기사만" not in prompt
 
@@ -116,24 +116,24 @@ class TestSummarizeNewsPrompt:
         """날짜 불명 기사 제외 지시가 프롬프트에 포함."""
         now = datetime(2026, 5, 24, 9, 15, 0, tzinfo=KST)
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "요약 결과"
             from GameNews_bot.game_news import summarize_news
             summarize_news("테스트 데이터", now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             assert "확인할 수 없는 기사" in prompt or "날짜 불명" in prompt
 
     def test_result_message_contains_target_date(self):
         """결과 메시지에 대상 날짜가 명시."""
         now = datetime(2026, 5, 24, 9, 15, 0, tzinfo=KST)
 
-        with patch("GameNews_bot.game_news.claude_cli") as mock_cli:
+        with patch("GameNews_bot.game_news.route_current") as mock_cli:
             mock_cli.return_value = "📅 2026년 05월 23일 (2026-05-23) 게임뉴스\n내용"
             from GameNews_bot.game_news import summarize_news
             summarize_news("테스트", now=now)
 
-            prompt = mock_cli.call_args[0][0]
+            prompt = mock_cli.call_args[0][1]
             # 출력 형식에 대상 날짜가 포함되어야 함
             assert "2026-05-23" in prompt
             assert "2026년 05월 23일" in prompt

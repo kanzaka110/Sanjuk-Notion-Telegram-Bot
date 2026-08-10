@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "dependencies": {
+    "hermes_agent_grok_bridge": {
+      "upstream_repository": "https://github.com/NousResearch/hermes-agent",
+      "pinned_version": "0.20.0",
+      "reviewed_commit": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
+      "license": "MIT",
+      "adapter": "briefing_grok_cli.py",
+      "model": "xai-oauth/grok-build-0.1",
+      "authority": "public_analysis",
+      "excluded": ["api_key_provider", "extra_usage", "gateway", "cron", "broker_order_authority"]
+    },
+    "openai_codex_cli": {
+      "executable": "/home/kanzaka110/.local/bin/codex",
+      "observed_version": "0.146.1",
+      "model": "gpt-5.6-sol",
+      "adapter": "briefing_codex_cli.py",
+      "sandbox": "read-only",
+      "authority": "public_editorial"
+    },
+    "perplexity_search_api": {
+      "endpoint": "https://api.perplexity.ai/search",
+      "sdk_dependency": false,
+      "adapter": "briefing_perplexity.py",
+      "authority": "public_evidence"
+    },
+    "claude_code_private": {
+      "executable": "/usr/bin/claude",
+      "observed_version": "2.1.205",
+      "adapter": "shared_config.claude_cli",
+      "authority": "private_advice",
+      "allowed_stage": "LUCK_PRIVATE_FINAL"
+    }
+  }
+}
