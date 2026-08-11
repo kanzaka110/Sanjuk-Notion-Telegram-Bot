@@ -18,7 +18,7 @@ from pathlib import Path
 
 # 정식 브리핑 모델 router 로드
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from briefing_model_router import briefing_model_session, route_current
+from briefing_model_router import briefing_model_session, record_delivery, route_current
 
 # ─── 설정 ──────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("GAME_NEWS_BOT_TOKEN", os.environ.get("TELEGRAM_BOT_TOKEN", ""))
@@ -151,7 +151,7 @@ def summarize_news(gathered_text: str, now: datetime | None = None) -> str:
 
 
 # ─── 텔레그램 전송 ────────────────────────────────────
-def send_telegram(text: str, now: datetime | None = None) -> None:
+def send_telegram(text: str, now: datetime | None = None) -> dict[str, object]:
     if now is None:
         now = datetime.now(KST)
     target = get_target_date(now)
@@ -166,17 +166,28 @@ def send_telegram(text: str, now: datetime | None = None) -> None:
         "disable_web_page_preview": True,
     }
 
-    # 텔레그램 4096자 제한
-    if len(msg) > 4000:
-        for i in range(0, len(msg), 4000):
-            chunk_payload = {**payload, "text": msg[i:i + 4000]}
-            requests.post(url, json=chunk_payload, timeout=30)
-    else:
-        res = requests.post(url, json=payload, timeout=30)
-        if res.status_code == 200:
-            print("  ✅ 텔레그램 전송 완료")
-        else:
-            print(f"  ⚠️ 전송 실패: {res.status_code} {res.text[:200]}")
+    chunks = [msg[i:i + 4000] for i in range(0, len(msg), 4000)] or [msg]
+    failures: list[str] = []
+    for chunk in chunks:
+        try:
+            res = requests.post(url, json={**payload, "text": chunk}, timeout=30)
+            api_ok = True
+            try:
+                body = res.json()
+                api_ok = not isinstance(body, dict) or body.get("ok") is not False
+            except Exception:
+                api_ok = True
+            if res.status_code != 200 or not api_ok:
+                failures.append("telegram_http_failed")
+        except Exception:
+            failures.append("telegram_transport_failed")
+    success = not failures
+    print("  ✅ 텔레그램 전송 완료" if success else "  ⚠️ 텔레그램 전송 실패")
+    return {
+        "success": success,
+        "reason_code": "" if success else failures[0],
+        "attempts": len(chunks),
+    }
 
 
 # ─── 메인 ─────────────────────────────────────────────
@@ -194,7 +205,10 @@ def main():
 
         if not gathered or gathered == "(검색 결과 없음)":
             print("❌ 뉴스를 찾지 못했습니다.")
-            send_telegram("오늘은 수집된 게임 뉴스가 없습니다.")
+            delivery = send_telegram("오늘은 수집된 게임 뉴스가 없습니다.")
+            record_delivery(**delivery)
+            if not delivery["success"]:
+                raise RuntimeError(str(delivery["reason_code"]))
             return
 
         print("🤖 Grok 분석 + Codex 편집 중...")
@@ -202,7 +216,10 @@ def main():
         print(f"  → 정리 완료 ({len(summary)}자)\n")
 
         print("📨 텔레그램 전송...")
-        send_telegram(summary)
+        delivery = send_telegram(summary)
+        record_delivery(**delivery)
+        if not delivery["success"]:
+            raise RuntimeError(str(delivery["reason_code"]))
 
     print(f"\n{'='*50}")
     print("  ✅ 게임뉴스 브리핑 완료!")

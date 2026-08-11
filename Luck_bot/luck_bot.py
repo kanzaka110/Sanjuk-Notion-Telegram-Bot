@@ -20,7 +20,7 @@ from pathlib import Path
 # shared_config에서 Claude CLI 유틸리티 로드
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_config import claude_cli
-from briefing_model_router import briefing_model_session, route_current
+from briefing_model_router import briefing_model_session, record_delivery, route_current
 
 from saju_calendar import get_daily_analysis, get_week_analysis
 from google_calendar import get_calendar_context
@@ -445,57 +445,66 @@ Google Calendar에 이번 달 일정이 있으면 주차별 운세에서 주요 
 #  텔레그램 메시지 전송 헬퍼
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def send_long_message(bot, chat_id: int, text: str) -> None:
-    """4000자 초과 메시지를 분할 전송."""
-    if len(text) > 4000:
-        for i in range(0, len(text), 4000):
-            await bot.send_message(chat_id=chat_id, text=text[i : i + 4000])
-    else:
-        await bot.send_message(chat_id=chat_id, text=text)
+async def send_long_message(bot, chat_id: int, text: str) -> dict[str, object]:
+    """모든 청크를 시도하고 구조화된 전송 결과를 반환."""
+    chunks = [text[i:i + 4000] for i in range(0, len(text), 4000)] or [text]
+    failures: list[str] = []
+    for chunk in chunks:
+        try:
+            await bot.send_message(chat_id=chat_id, text=chunk)
+        except Exception:
+            failures.append("telegram_transport_failed")
+    return {
+        "success": not failures,
+        "reason_code": "" if not failures else failures[0],
+        "attempts": len(chunks),
+    }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  스케줄러 콜백
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _scheduled_daily_body(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
     """매일 08:00 KST — 일간 운세 전송."""
     now = datetime.now(KST)
 
-    # 월요일이면 주간 운세도 함께 전송
-    if now.weekday() == 0:  # Monday
-        try:
-            log.info("📅 주간 운세 생성 시작 (Claude Sonnet)...")
-            weekly = await generate_weekly_fortune(scheduled=True)
-            await send_long_message(context.bot, ALLOWED_CHAT_ID, weekly)
-            log.info("📅 주간 운세 전송 완료")
-        except Exception as e:
-            log.error(f"주간 운세 전송 실패: {e}")
-
-    # 매월 1일이면 월간 운세도 함께 전송
+    jobs = []
+    if now.weekday() == 0:
+        jobs.append(("주간", generate_weekly_fortune))
     if now.day == 1:
-        try:
-            log.info("🌙 월간 운세 생성 시작 (Claude Sonnet)...")
-            monthly = await generate_monthly_fortune(scheduled=True)
-            await send_long_message(context.bot, ALLOWED_CHAT_ID, monthly)
-            log.info("🌙 월간 운세 전송 완료")
-        except Exception as e:
-            log.error(f"월간 운세 전송 실패: {e}")
+        jobs.append(("월간", generate_monthly_fortune))
+    jobs.append(("일간", generate_daily_fortune))
 
-    # 일간 운세는 항상 전송
-    try:
-        log.info("☀️ 일간 운세 생성 시작 (Claude Sonnet)...")
-        daily = await generate_daily_fortune(scheduled=True)
-        await send_long_message(context.bot, ALLOWED_CHAT_ID, daily)
-        log.info("☀️ 일간 운세 전송 완료")
-    except Exception as e:
-        log.error(f"일간 운세 전송 실패: {e}")
+    attempts = 0
+    failures: list[str] = []
+    for label, generator in jobs:
+        try:
+            log.info(f"{label} 운세 생성 시작 (Claude Sonnet)...")
+            message = await generator(scheduled=True)
+            result = await send_long_message(context.bot, ALLOWED_CHAT_ID, message)
+            attempts += int(result["attempts"])
+            if not result["success"]:
+                failures.append(str(result["reason_code"]))
+            else:
+                log.info(f"{label} 운세 전송 완료")
+        except Exception as exc:
+            failures.append("scheduled_generation_failed")
+            log.error(f"{label} 운세 생성/전송 실패: {type(exc).__name__}")
+    return {
+        "success": not failures,
+        "reason_code": "" if not failures else failures[0],
+        "attempts": attempts,
+    }
 
 
 async def scheduled_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
     """정식 예약 운세만 private model session으로 실행."""
     with briefing_model_session("LUCK"):
-        await _scheduled_daily_body(context)
+        delivery = await _scheduled_daily_body(context)
+        record_delivery(**delivery)
+        if not delivery["success"]:
+            raise RuntimeError(str(delivery["reason_code"]))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -536,7 +545,9 @@ async def cmd_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     await update.message.chat.send_action("typing")
     fortune = await generate_daily_fortune()
-    await send_long_message(context.bot, update.effective_chat.id, fortune)
+    delivery = await send_long_message(context.bot, update.effective_chat.id, fortune)
+    if not delivery["success"]:
+        raise RuntimeError(str(delivery["reason_code"]))
 
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -545,7 +556,9 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.chat.send_action("typing")
     fortune = await generate_weekly_fortune()
-    await send_long_message(context.bot, update.effective_chat.id, fortune)
+    delivery = await send_long_message(context.bot, update.effective_chat.id, fortune)
+    if not delivery["success"]:
+        raise RuntimeError(str(delivery["reason_code"]))
 
 
 async def cmd_month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -554,7 +567,9 @@ async def cmd_month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.chat.send_action("typing")
     fortune = await generate_monthly_fortune()
-    await send_long_message(context.bot, update.effective_chat.id, fortune)
+    delivery = await send_long_message(context.bot, update.effective_chat.id, fortune)
+    if not delivery["success"]:
+        raise RuntimeError(str(delivery["reason_code"]))
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

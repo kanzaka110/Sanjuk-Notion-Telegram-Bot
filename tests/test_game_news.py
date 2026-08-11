@@ -15,6 +15,15 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 from GameNews_bot.game_news import get_target_date, KST
 
 
+class _Response:
+    def __init__(self, status_code=200, ok=True):
+        self.status_code = status_code
+        self._ok = ok
+
+    def json(self):
+        return {"ok": self._ok}
+
+
 class TestGetTargetDate:
     """get_target_date 헬퍼 테스트."""
 
@@ -137,3 +146,17 @@ class TestSummarizeNewsPrompt:
             # 출력 형식에 대상 날짜가 포함되어야 함
             assert "2026-05-23" in prompt
             assert "2026년 05월 23일" in prompt
+
+
+def test_send_telegram_checks_every_chunk_and_returns_terminal_failure():
+    from GameNews_bot.game_news import send_telegram
+
+    responses = [_Response(200, True), _Response(500, False)]
+    with patch("GameNews_bot.game_news.requests.post", side_effect=responses) as post:
+        result = send_telegram("x" * 5000, now=datetime(2026, 5, 24, 9, 15, tzinfo=KST))
+    assert post.call_count == 2
+    assert result == {
+        "success": False,
+        "reason_code": "telegram_http_failed",
+        "attempts": 2,
+    }
