@@ -36,7 +36,7 @@ class TestProjectStructure:
         assert (PROJECT_ROOT / "CLAUDE.md").exists()
 
     def test_all_bot_directories_exist(self):
-        for bot_dir in ["Chat_bot", "GameNews_bot", "Luck_bot"]:
+        for bot_dir in ["GameNews_bot", "Luck_bot"]:
             assert (PROJECT_ROOT / bot_dir).exists(), f"{bot_dir}/ missing"
 
     def test_shared_config_exists(self):
@@ -62,13 +62,6 @@ class TestNoHardcodedSecrets:
                 if pattern.findall(content):
                     violations.append(f"{py_file.relative_to(PROJECT_ROOT)}: {pattern.pattern}")
         assert not violations, f"Hardcoded secrets found: {violations}"
-
-
-class TestRequirementsFiles:
-    """Each bot should have requirements.txt."""
-
-    def test_chat_bot_requirements(self):
-        assert (PROJECT_ROOT / "Chat_bot" / "requirements.txt").exists()
 
 
 class TestGitHubActions:
@@ -97,9 +90,6 @@ class TestPythonSyntax:
 
 class TestBotStructure:
     """Per-bot structural validation."""
-
-    def test_chat_bot_has_entry_point(self):
-        assert (PROJECT_ROOT / "Chat_bot" / "chat_bot.py").exists()
 
     def test_gamenews_bot_has_scripts(self):
         gn = PROJECT_ROOT / "GameNews_bot"

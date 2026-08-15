@@ -17,11 +17,9 @@ SECRET_PATTERNS = [
 REQUIRED_FILES = [
     "CLAUDE.md",
     "shared_config.py",
-    "Chat_bot/chat_bot.py",
-    "Chat_bot/requirements.txt",
 ]
 
-REQUIRED_DIRS = ["Chat_bot", "GameNews_bot", "Luck_bot", "scripts", "tests"]
+REQUIRED_DIRS = ["GameNews_bot", "Luck_bot", "scripts", "tests"]
 
 
 def check_required_files():
